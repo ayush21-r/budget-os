@@ -28,6 +28,7 @@ function registerGlobalListener() {
   if (globalSubscription) return;
 
   console.log('[AuthContext Global] Registering onAuthStateChange listener');
+  
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
     console.log('[AuthContext Global] Event:', event, 'session:', nextSession);
     
@@ -63,6 +64,35 @@ function registerGlobalListener() {
   });
 
   globalSubscription = subscription;
+
+  // Trigger getSession explicitly to start hash parsing and restore cached session
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    console.log('[AuthContext Global] getSession resolved:', session);
+    if (session) {
+      currentSession = session;
+      currentUser = session.user;
+      currentLoading = false;
+      for (const listener of globalListeners) {
+        listener('INITIAL_SESSION', currentSession, currentUser);
+      }
+    } else {
+      // If there is an active OAuth redirect in the hash, do NOT terminate the loading state yet.
+      // Let the onAuthStateChange SIGNED_IN event handle it.
+      const hasHash = typeof window !== 'undefined' && window.location.hash.includes('access_token=');
+      if (!hasHash) {
+        currentLoading = false;
+        for (const listener of globalListeners) {
+          listener('INITIAL_SESSION', null, null);
+        }
+      }
+    }
+  }).catch((err) => {
+    console.error('[AuthContext Global] getSession failed:', err);
+    currentLoading = false;
+    for (const listener of globalListeners) {
+      listener('INITIAL_SESSION', null, null);
+    }
+  });
 }
 
 // Register listener once at module import time
