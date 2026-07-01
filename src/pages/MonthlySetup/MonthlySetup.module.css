@@ -1,0 +1,129 @@
+.setupGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.metric strong {
+  display: block;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.metric span {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.allocationTrack {
+  height: 12px;
+  border: 2px solid var(--color-ink);
+  border-radius: 999px;
+  background: #f2eadc;
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.allocationTrack div {
+  height: 100%;
+  background: var(--color-accent);
+  border-right: 2px solid var(--color-ink);
+}
+
+.categoryList {
+  display: grid;
+  gap: 10px;
+}
+
+.categoryRow {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(120px, 1fr)) auto;
+  gap: 14px;
+  align-items: center;
+  border: 2px solid var(--color-ink);
+  border-radius: 14px;
+  background: #fffdf8;
+  padding: 14px;
+}
+
+.categoryRow > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.categoryRow > div:first-child > span {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--color-ink);
+  border-radius: 999px;
+}
+
+.categoryRow p {
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.modalForm {
+  display: grid;
+  gap: 14px;
+}
+
+.planForm {
+  display: grid;
+  gap: 14px;
+}
+
+.saveButton {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.message {
+  margin: 0 0 14px;
+  color: #9f2d1e;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.rowActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.selectLabel {
+  display: grid;
+  gap: 7px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.selectLabel select {
+  width: 100%;
+  min-height: 42px;
+  border: 2px solid var(--color-ink);
+  border-radius: 12px;
+  background: #fffdf8;
+  color: var(--color-ink);
+  padding: 0 12px;
+}
+
+@media (max-width: 1040px) {
+  .setupGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 780px) {
+  .categoryRow {
+    grid-template-columns: 1fr;
+  }
+
+  .rowActions {
+    justify-content: flex-start;
+  }
+}

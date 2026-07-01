@@ -1,0 +1,30 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 17, 17, 0.32);
+}
+
+.modal {
+  width: min(540px, 100%);
+  border: 2px solid var(--color-ink);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-hard);
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.header h2 {
+  font-size: 1.2rem;
+}

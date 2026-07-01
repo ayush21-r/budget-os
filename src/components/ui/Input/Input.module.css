@@ -1,0 +1,23 @@
+.field {
+  display: grid;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--color-muted);
+}
+
+.input {
+  width: 100%;
+  min-height: 42px;
+  border: 2px solid var(--color-ink);
+  border-radius: 12px;
+  background: #fffdf8;
+  color: var(--color-ink);
+  padding: 0 12px;
+  font: inherit;
+  outline: none;
+}
+
+.input:focus {
+  box-shadow: 0 0 0 3px rgba(212, 106, 76, 0.2);
+}

@@ -1,0 +1,148 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: var(--color-page);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 28px 20px;
+  border-right: 2px solid var(--color-ink);
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.brand,
+.mobileBrand .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandMark {
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--color-ink);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+.brand strong {
+  display: block;
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.brand span {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.nav {
+  display: grid;
+  gap: 8px;
+}
+
+.navItem {
+  width: 100%;
+  min-height: 46px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 13px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.navItem:hover,
+.active {
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+  background: #fffaf0;
+  box-shadow: 3px 3px 0 var(--color-ink);
+  transform: translate(-1px, -1px);
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.main {
+  min-width: 0;
+  padding: 30px clamp(20px, 4vw, 46px) 48px;
+}
+
+.mobileBrand {
+  display: none;
+}
+
+@media (max-width: 920px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: auto 12px 14px;
+    z-index: 20;
+    height: auto;
+    padding: 10px;
+    border: 2px solid var(--color-ink);
+    border-radius: 18px;
+    box-shadow: var(--shadow-hard);
+  }
+
+  .sidebar > .brand,
+  .sidebarFooter {
+    display: none;
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .navItem {
+    min-height: 54px;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 12px;
+  }
+
+  .navItem span {
+    display: none;
+  }
+
+  .mobileBrand {
+    display: block;
+    margin-bottom: 18px;
+  }
+
+  .main {
+    padding-bottom: 100px;
+  }
+}

@@ -1,0 +1,23 @@
+.form {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.submit {
+  width: 100%;
+}
+
+@media (max-width: 680px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.error {
+  margin-top: 10px;
+  color: #9f2d1e;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
