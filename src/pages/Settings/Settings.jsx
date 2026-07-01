@@ -1,5 +1,6 @@
-import { Download, Moon, Repeat, RotateCcw, Tags } from 'lucide-react';
+import { Download, LogOut, Moon, Repeat, RotateCcw, Tags } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../../hooks/useAuth.js';
 import PageHeader from '../../components/PageHeader/PageHeader.jsx';
 import Panel from '../../components/Panel/Panel.jsx';
 import Button from '../../components/ui/Button/Button.jsx';
@@ -18,6 +19,7 @@ const settingsSections = [
 
 function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
   usePageTitle('Settings');
+  const { user, logout } = useAuth();
   const [isSavingsOpen, setIsSavingsOpen] = useState(false);
   const [savingsGoal, setSavingsGoal] = useState(String(appState.profile.savingsGoal));
   const [message, setMessage] = useState('');
@@ -93,6 +95,22 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
 
       {message ? <p className={styles.message}>{message}</p> : null}
 
+      <Panel title="User Profile" subtitle="Your connected Google account information." className={styles.profilePanel}>
+        <div className={styles.profileBox}>
+          {user?.user_metadata?.avatar_url ? (
+            <img src={user.user_metadata.avatar_url} alt="Profile" className={styles.profileAvatar} />
+          ) : (
+            <div className={styles.profileAvatarFallback}>
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+          )}
+          <div className={styles.profileDetails}>
+            <h2>{user?.user_metadata?.full_name || 'No Name'}</h2>
+            <p>{user?.email}</p>
+          </div>
+        </div>
+      </Panel>
+
       <Panel
         title="Workspace Settings"
         subtitle="Local Storage powered settings for the current BudgetOS workspace."
@@ -100,6 +118,7 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
           <>
             <Button variant="secondary" icon={RotateCcw} onClick={handleMonthlyReset}>Reset Current Month</Button>
             <Button variant="secondary" icon={Download} onClick={handleExportJson}>Export JSON</Button>
+            <Button variant="secondary" icon={LogOut} onClick={logout}>Log Out</Button>
           </>
         }
       >

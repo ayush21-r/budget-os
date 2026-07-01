@@ -1,4 +1,5 @@
-import { BarChart3, LayoutDashboard, PanelLeftClose, Settings, SlidersHorizontal, WalletCards } from 'lucide-react';
+import { BarChart3, LayoutDashboard, LogOut, Settings, SlidersHorizontal, WalletCards } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth.js';
 import styles from './AppLayout.module.css';
 
 const navigation = [
@@ -9,6 +10,7 @@ const navigation = [
 ];
 
 function AppLayout({ activePage, onNavigate, children }) {
+  const { logout } = useAuth();
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -39,10 +41,14 @@ function AppLayout({ activePage, onNavigate, children }) {
           })}
         </nav>
 
-        <div className={styles.sidebarFooter}>
-          <PanelLeftClose size={18} />
-          <span>Local budget workspace</span>
-        </div>
+        <button
+          type="button"
+          className={styles.logoutButton}
+          onClick={logout}
+        >
+          <LogOut size={18} />
+          <span>Log Out</span>
+        </button>
       </aside>
 
       <main className={styles.main}>

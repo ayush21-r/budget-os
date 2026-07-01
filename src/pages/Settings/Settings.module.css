@@ -64,3 +64,48 @@
     grid-template-columns: 1fr;
   }
 }
+
+.profilePanel {
+  margin-bottom: 18px;
+}
+
+.profileBox {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profileAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--color-ink);
+  object-fit: cover;
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+
+.profileAvatarFallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--color-ink);
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  background: var(--color-accent);
+  box-shadow: 3px 3px 0 var(--color-ink);
+  color: var(--color-ink);
+}
+
+.profileDetails h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.profileDetails p {
+  color: var(--color-muted);
+  font-size: 0.94rem;
+  font-weight: 600;
+}
