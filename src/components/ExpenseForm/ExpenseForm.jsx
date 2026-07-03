@@ -1,6 +1,5 @@
 import { Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { createExpense } from '../../services/mockBudgetService.js';
 import Button from '../ui/Button/Button.jsx';
 import Dropdown from '../ui/Dropdown/Dropdown.jsx';
 import Input from '../ui/Input/Input.jsx';
@@ -8,14 +7,14 @@ import styles from './ExpenseForm.module.css';
 
 function ExpenseForm({ categories, onAddExpense }) {
   const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
+  const [category_id, setCategoryId] = useState(categories[0]?.id || '');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!categories.some((category) => category.id === categoryId)) {
+    if (!categories.some((category) => category.id === category_id)) {
       setCategoryId(categories[0]?.id || '');
     }
-  }, [categories, categoryId]);
+  }, [categories, category_id]);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -27,12 +26,12 @@ function ExpenseForm({ categories, onAddExpense }) {
       setError('Amount must be greater than zero.');
       return;
     }
-    if (!categories.some((category) => category.id === categoryId)) {
+    if (!categories.some((category) => category.id === category_id)) {
       setError('Choose a valid category.');
       return;
     }
 
-    onAddExpense(createExpense({ amount, categoryId, categories }));
+    onAddExpense({ amount: Number(amount), category_id });
     setAmount('');
     setError('');
   }
@@ -41,7 +40,7 @@ function ExpenseForm({ categories, onAddExpense }) {
     <div>
       <form className={styles.form} onSubmit={handleSubmit}>
         <Input label="Amount" id="expense-amount" type="number" min="1" step="0.01" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />
-        <Dropdown label="Category" id="expense-category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+        <Dropdown label="Category" id="expense-category" value={category_id} onChange={(event) => setCategoryId(event.target.value)}>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}

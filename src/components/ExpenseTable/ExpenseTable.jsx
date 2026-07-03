@@ -21,20 +21,20 @@ function ExpenseTable({ expenses, categories, onDeleteExpense, onEditExpense, re
         </thead>
         <tbody>
           {expenses.map((expense) => {
-            const category = categoryMap.get(expense.categoryId);
+            const category = categoryMap.get(expense.category_id);
             return (
               <tr key={expense.id}>
-                <td>{expense.title}</td>
-                <td>
+                <td data-label="Expense">{expense.description}</td>
+                <td data-label="Category">
                   <span className={styles.category}>
                     <span style={{ backgroundColor: category?.color }} />
                     {category?.name || 'Other'}
                   </span>
                 </td>
-                <td>{formatDisplayDate(expense.date)}</td>
-                <td>{formatCurrencyPrecise(expense.amount)}</td>
+                <td data-label="Date">{formatDisplayDate(expense.expense_date)}</td>
+                <td data-label="Amount">{formatCurrencyPrecise(expense.amount)}</td>
                 {!readOnly ? (
-                  <td>
+                  <td data-label="Actions">
                     <div className={styles.actions}>
                       <Button variant="secondary" icon={Edit3} onClick={() => onEditExpense(expense)}>
                         Edit

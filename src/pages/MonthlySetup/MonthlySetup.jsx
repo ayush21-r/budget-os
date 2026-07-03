@@ -6,12 +6,11 @@ import Button from '../../components/ui/Button/Button.jsx';
 import Input from '../../components/ui/Input/Input.jsx';
 import Modal from '../../components/ui/Modal/Modal.jsx';
 import { usePageTitle } from '../../hooks/usePageTitle.js';
-import { createCategory } from '../../services/mockBudgetService.js';
 import { categoryIconOptions, getCategoryIcon } from '../../utils/categoryIcons.js';
 import { formatCurrency } from '../../utils/formatters.js';
 import styles from './MonthlySetup.module.css';
 
-function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView }) {
+function MonthlySetup({ budgetState, actions, overview, isArchivedView }) {
   usePageTitle('Monthly Setup');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,13 +19,13 @@ function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView })
   const [categoryBudget, setCategoryBudget] = useState('');
   const [categoryIcon, setCategoryIcon] = useState('wallet');
   const [allowance, setAllowance] = useState(String(budgetState.profile.allowance));
-  const [savingsGoal, setSavingsGoal] = useState(String(budgetState.profile.savingsGoal));
+  const [savings_goal, setSavingsGoal] = useState(String(budgetState.profile.savings_goal));
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     setAllowance(String(budgetState.profile.allowance));
-    setSavingsGoal(String(budgetState.profile.savingsGoal));
-  }, [budgetState.profile.allowance, budgetState.profile.savingsGoal]);
+    setSavingsGoal(String(budgetState.profile.savings_goal));
+  }, [budgetState.profile.allowance, budgetState.profile.savings_goal]);
 
   const allocationPercent = useMemo(() => {
     return Math.min((overview.allocated / Math.max(overview.availableSpending, 1)) * 100, 100);
@@ -38,30 +37,33 @@ function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView })
     return 'Your available spending is fully allocated.';
   }
 
-  function handlePlanUpdate(event) {
+  async function handlePlanUpdate(event) {
     event.preventDefault();
-    if (Number(allowance) < 0 || Number(savingsGoal) < 0) {
+    const nextAllowance = Number(allowance);
+    const nextSavings = Number(savings_goal);
+
+    if (nextAllowance < 0 || nextSavings < 0) {
       setMessage('Monthly allowance and savings goal cannot be negative.');
       return;
     }
-    if (Number(savingsGoal) > Number(allowance)) {
+    if (nextSavings > nextAllowance) {
       setMessage('Savings goal cannot exceed monthly allowance.');
       return;
     }
-    if (overview.allocated > Number(allowance) - Number(savingsGoal)) {
+    if (overview.allocated > nextAllowance - nextSavings) {
       setMessage('You have exceeded your budget.');
       return;
     }
 
-    setBudgetState((current) => ({
-      ...current,
-      profile: {
-        ...current.profile,
-        allowance: Number(allowance),
-        savingsGoal: Number(savingsGoal),
-      },
-    }));
-    setMessage('Monthly setup saved.');
+    try {
+      await actions.updatePlan(budgetState.profile.id, {
+        allowance: nextAllowance,
+        savings_goal: nextSavings,
+      });
+      setMessage('Monthly setup saved.');
+    } catch (planError) {
+      setMessage(planError.message || 'Unable to save monthly setup.');
+    }
   }
 
   function resetCategoryForm() {
@@ -80,7 +82,7 @@ function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView })
     setIsModalOpen(true);
   }
 
-  function handleAddCategory(event) {
+  async function handleAddCategory(event) {
     event.preventDefault();
     const trimmedName = categoryName.trim();
     const proposedBudget = Number(categoryBudget);
@@ -101,31 +103,35 @@ function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView })
       return;
     }
 
-    setBudgetState((current) => {
+    try {
       if (editingCategory) {
-        return {
-          ...current,
-          categories: current.categories.map((category) =>
-            category.id === editingCategory.id ? { ...category, name: trimmedName, budget: proposedBudget, icon: categoryIcon } : category
-          ),
-        };
+        await actions.updateCategory(editingCategory.id, {
+          name: trimmedName,
+          budget: proposedBudget,
+          icon: categoryIcon,
+        });
+      } else {
+        await actions.createCategory({
+          monthId: budgetState.profile.id,
+          name: trimmedName,
+          budget: proposedBudget,
+          icon: categoryIcon,
+        });
       }
-
-      return {
-        ...current,
-        categories: [...current.categories, createCategory({ name: trimmedName, budget: proposedBudget, icon: categoryIcon })],
-      };
-    });
-    resetCategoryForm();
-    setIsModalOpen(false);
+      resetCategoryForm();
+      setIsModalOpen(false);
+    } catch (categoryError) {
+      setMessage(categoryError.message || 'Unable to save category.');
+    }
   }
 
-  function handleDeleteCategory(categoryId) {
-    setBudgetState((current) => ({
-      ...current,
-      categories: current.categories.filter((category) => category.id !== categoryId),
-      expenses: current.expenses.filter((expense) => expense.categoryId !== categoryId),
-    }));
+  async function handleDeleteCategory(categoryId) {
+    try {
+      await actions.deleteCategory(categoryId);
+      setMessage('Category deleted.');
+    } catch (categoryError) {
+      setMessage(categoryError.message || 'Unable to delete category.');
+    }
   }
 
   return (
@@ -150,10 +156,10 @@ function MonthlySetup({ budgetState, setBudgetState, overview, isArchivedView })
         <Panel title="Savings Goal" subtitle="Amount reserved before spending allocations.">
           <form className={styles.planForm} onSubmit={handlePlanUpdate}>
             <div className={styles.metric}>
-              <strong>{formatCurrency(budgetState.profile.savingsGoal)}</strong>
-              <span>{Math.round((budgetState.profile.savingsGoal / Math.max(budgetState.profile.allowance, 1)) * 100)}% of monthly allowance</span>
+              <strong>{formatCurrency(budgetState.profile.savings_goal)}</strong>
+              <span>{Math.round((budgetState.profile.savings_goal / Math.max(budgetState.profile.allowance, 1)) * 100)}% of monthly allowance</span>
             </div>
-            {!isArchivedView ? <Input label="Savings Goal" id="savings-goal" type="number" min="0" value={savingsGoal} onChange={(event) => setSavingsGoal(event.target.value)} /> : null}
+            {!isArchivedView ? <Input label="Savings Goal" id="savings-goal" type="number" min="0" value={savings_goal} onChange={(event) => setSavingsGoal(event.target.value)} /> : null}
           </form>
         </Panel>
         <Panel title="Budget Allocation" subtitle="Category budgets compared with allowance.">

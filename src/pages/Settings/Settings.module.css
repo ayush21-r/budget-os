@@ -55,12 +55,45 @@
   align-items: end;
 }
 
+.preferenceForm {
+  display: grid;
+  gap: 16px;
+}
+
+.preferenceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkboxField {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.checkboxField input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
 @media (max-width: 760px) {
   .settingsGrid {
     grid-template-columns: 1fr;
   }
 
   .savingsForm {
+    grid-template-columns: 1fr;
+  }
+
+  .preferenceGrid {
     grid-template-columns: 1fr;
   }
 }

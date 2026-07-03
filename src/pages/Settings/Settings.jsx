@@ -1,70 +1,78 @@
-import { Download, LogOut, Moon, Repeat, RotateCcw, Tags } from 'lucide-react';
-import { useState } from 'react';
+import { Download, FileJson, LogOut, Repeat, RotateCcw, Tags, Trash2, User, FileText } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import PageHeader from '../../components/PageHeader/PageHeader.jsx';
 import Panel from '../../components/Panel/Panel.jsx';
 import Button from '../../components/ui/Button/Button.jsx';
 import Input from '../../components/ui/Input/Input.jsx';
-import Modal from '../../components/ui/Modal/Modal.jsx';
+import Dropdown from '../../components/ui/Dropdown/Dropdown.jsx';
 import { usePageTitle } from '../../hooks/usePageTitle.js';
-import { getNextMonth } from '../../utils/dateUtils.js';
+import { calculateBudgetOverview } from '../../utils/budgetUtils.js';
+import BudgetReport from '../../components/BudgetReport/BudgetReport.jsx';
 import styles from './Settings.module.css';
+
+const THEME_OPTIONS = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
 
 const settingsSections = [
   { title: 'Manage Categories', description: 'Review budget labels, category colors, and spending groups.', icon: Tags },
-  { title: 'Recurring Expenses', description: 'Reserve space for rent, utilities, memberships, and predictable bills.', icon: Repeat },
+  { title: 'New Month', description: 'Open the current calendar month with default planning values.', icon: Repeat },
   { title: 'Export Data', description: 'Prepare budget summaries for CSV or monthly reports.', icon: Download },
-  { title: 'Theme', description: 'Choose how BudgetOS should feel during daily planning sessions.', icon: Moon },
+  { title: 'Import', description: 'Validate an exported BudgetOS JSON file before import.', icon: FileJson },
+  { title: 'Delete Month', description: 'Delete the selected month and return to a fresh month.', icon: Trash2 },
+  { title: 'Reset Data', description: 'Delete all budget data and recreate a clean current month.', icon: RotateCcw },
+  { title: 'Account', description: 'Review the authenticated account connected to Supabase.', icon: User },
+  { title: 'Supabase Session', description: 'Confirm that a live Supabase session is active.', icon: User },
 ];
 
-function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
+function Settings({ appState, actions, onNavigate }) {
   usePageTitle('Settings');
   const { user, logout } = useAuth();
-  const [isSavingsOpen, setIsSavingsOpen] = useState(false);
-  const [savingsGoal, setSavingsGoal] = useState(String(appState.profile.savingsGoal));
+  const [savings_goal, setSavingsGoal] = useState(String(appState.profile.savings_goal));
+  const [defaultAllowance, setDefaultAllowance] = useState(String(appState.settings?.defaultAllowance ?? appState.profile.allowance ?? 0));
+  const [defaultSavingsGoal, setDefaultSavingsGoal] = useState(String(appState.settings?.defaultSavingsGoal ?? appState.profile.savings_goal ?? 0));
+  const [currency, setCurrency] = useState(appState.settings?.currency || 'INR');
+  const [theme, setTheme] = useState(appState.settings?.theme || 'light');
+  const [notifications, setNotifications] = useState(Boolean(appState.settings?.notifications));
+  const [firstDayOfMonth, setFirstDayOfMonth] = useState(String(appState.settings?.firstDayOfMonth ?? 1));
   const [message, setMessage] = useState('');
+  const importInputRef = useRef(null);
 
-  function handleSavingsSubmit(event) {
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const reportRef = useRef(null);
+  const overview = calculateBudgetOverview(appState);
+
+  useEffect(() => {
+    setSavingsGoal(String(appState.profile.savings_goal));
+    setDefaultAllowance(String(appState.settings?.defaultAllowance ?? appState.profile.allowance ?? 0));
+    setDefaultSavingsGoal(String(appState.settings?.defaultSavingsGoal ?? appState.profile.savings_goal ?? 0));
+    setCurrency(appState.settings?.currency || 'INR');
+    setTheme(appState.settings?.theme || 'light');
+    setNotifications(Boolean(appState.settings?.notifications));
+    setFirstDayOfMonth(String(appState.settings?.firstDayOfMonth ?? 1));
+  }, [appState.profile.allowance, appState.profile.savings_goal, appState.settings?.currency, appState.settings?.defaultAllowance, appState.settings?.defaultSavingsGoal, appState.settings?.notifications, appState.settings?.theme, appState.settings?.firstDayOfMonth]);
+
+  async function handleSavingsSubmit(event) {
     event.preventDefault();
-    if (Number(savingsGoal) < 0) {
+    const nextSavings = Number(savings_goal);
+    if (nextSavings < 0) {
       setMessage('Savings goal cannot be negative.');
       return;
     }
-    if (Number(savingsGoal) > Number(appState.profile.allowance)) {
+    if (nextSavings > Number(appState.profile.allowance)) {
       setMessage('Savings goal cannot exceed monthly allowance.');
       return;
     }
 
-    setBudgetState((current) => ({
-      ...current,
-      profile: { ...current.profile, savingsGoal: Number(savingsGoal) },
-    }));
-    setIsSavingsOpen(false);
-    setMessage('Savings goal updated.');
-  }
-
-  function handleMonthlyReset() {
-    const nextMonth = getNextMonth(appState.profile);
-
-    setBudgetState((current) => ({
-      ...current,
-      history: [
-        {
-          profile: { ...current.profile },
-          categories: current.categories.map((category) => ({ ...category })),
-          expenses: current.expenses.map((expense) => ({ ...expense })),
-        },
-        ...(current.history || []),
-      ],
-      profile: {
-        ...current.profile,
-        month: nextMonth.month,
-        monthId: nextMonth.monthId,
-      },
-      expenses: [],
-    }));
-    setActiveMonthId('current');
-    setMessage('Current month archived and reset.');
+    try {
+      await actions.updatePlan(appState.profile.id, { savings_goal: nextSavings });
+      setMessage('Savings goal updated.');
+    } catch (settingsError) {
+      setMessage(settingsError.message || 'Unable to update savings goal.');
+    }
   }
 
   function handleExportJson() {
@@ -78,11 +86,110 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
     setMessage('JSON export created.');
   }
 
-  function handleConfigure(title) {
-    if (title === 'Manage Categories') onNavigate('setup');
-    if (title === 'Export Data') handleExportJson();
-    if (title === 'Recurring Expenses') setMessage('Recurring expenses are ready for Phase 3.');
-    if (title === 'Theme') setMessage('Theme controls are reserved for a later phase.');
+  async function handleDownloadPdf() {
+    setIsGeneratingPdf(true);
+    setMessage('Generating PDF Report, please wait...');
+
+    setTimeout(async () => {
+      try {
+        const { jsPDF } = await import('jspdf');
+        const html2canvas = (await import('html2canvas')).default;
+
+        const container = reportRef.current;
+        if (!container) throw new Error('Report template container not found.');
+
+        // Find child elements using a custom selector or query
+        const pages = container.querySelectorAll('[class*="pdfPage"]');
+        if (!pages.length) throw new Error('No PDF pages found in container.');
+
+        const pdf = new jsPDF('p', 'mm', 'a4');
+
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          const canvas = await html2canvas(page, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          });
+          const imgData = canvas.toDataURL('image/png');
+
+          if (i > 0) {
+            pdf.addPage();
+          }
+
+          pdf.addImage(imgData, 'PNG', 0, 0, 210, 297);
+        }
+
+        const fileName = `budgetos-report-${appState.profile.month.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`;
+        pdf.save(fileName);
+        setMessage('PDF Report downloaded successfully.');
+      } catch (pdfError) {
+        console.error(pdfError);
+        setMessage(pdfError.message || 'Error generating PDF report.');
+      } finally {
+        setIsGeneratingPdf(false);
+      }
+    }, 1200);
+  }
+
+  async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      await actions.importWorkspace(parsed);
+      setMessage('BudgetOS JSON import completed.');
+    } catch (importError) {
+      setMessage(importError.message || 'Unable to import JSON.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  async function handlePreferencesSubmit(event) {
+    event.preventDefault();
+    try {
+      await actions.updateSettings({
+        currency: currency.trim().toUpperCase(),
+        theme,
+        notifications,
+        firstDayOfMonth: Number(firstDayOfMonth),
+        defaultAllowance: Number(defaultAllowance),
+        defaultSavingsGoal: Number(defaultSavingsGoal),
+      });
+      setMessage('Workspace preferences saved.');
+    } catch (settingsError) {
+      setMessage(settingsError.message || 'Unable to save workspace preferences.');
+    }
+  }
+
+  async function handleConfigure(title) {
+    try {
+      if (title === 'Manage Categories') onNavigate('setup');
+      if (title === 'Export Data') handleExportJson();
+      if (title === 'New Month') {
+        await actions.createNewMonth();
+        setMessage(`Created a new month using the saved defaults of ${appState.settings?.defaultAllowance ?? appState.profile.allowance} and ${appState.settings?.defaultSavingsGoal ?? appState.profile.savings_goal}.`);
+      }
+      if (title === 'Delete Month') {
+        await actions.deleteMonth(appState.profile.id);
+        await actions.createNewMonth();
+        setMessage('Selected month deleted.');
+      }
+      if (title === 'Reset Data') {
+        await actions.resetAllData();
+        setMessage('All budget data reset.');
+      }
+      if (title === 'Import') {
+        importInputRef.current?.click();
+      }
+      if (title === 'Account') setMessage(user?.email ? `Signed in as ${user.email}.` : 'No account email available.');
+      if (title === 'Supabase Session') setMessage(user?.id ? `Active Supabase session for ${user.id}.` : 'No active Supabase session.');
+    } catch (settingsError) {
+      setMessage(settingsError.message || 'Unable to update settings.');
+    }
   }
 
   return (
@@ -94,6 +201,18 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
       />
 
       {message ? <p className={styles.message}>{message}</p> : null}
+
+      {/* Hidden print report container */}
+      {isGeneratingPdf && (
+        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+          <BudgetReport
+            budgetState={appState}
+            appState={appState}
+            overview={overview}
+            reportRef={reportRef}
+          />
+        </div>
+      )}
 
       <Panel title="User Profile" subtitle="Your connected Google account information." className={styles.profilePanel}>
         <div className={styles.profileBox}>
@@ -113,15 +232,19 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
 
       <Panel
         title="Workspace Settings"
-        subtitle="Local Storage powered settings for the current BudgetOS workspace."
+        subtitle="Supabase powered settings for the current BudgetOS workspace."
         actions={
           <>
-            <Button variant="secondary" icon={RotateCcw} onClick={handleMonthlyReset}>Reset Current Month</Button>
+            <Button variant="secondary" icon={RotateCcw} onClick={() => handleConfigure('New Month')}>New Month</Button>
+            <Button variant="secondary" icon={FileText} onClick={handleDownloadPdf} disabled={isGeneratingPdf}>
+              {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF Report'}
+            </Button>
             <Button variant="secondary" icon={Download} onClick={handleExportJson}>Export JSON</Button>
             <Button variant="secondary" icon={LogOut} onClick={logout}>Log Out</Button>
           </>
         }
       >
+        <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display: 'none' }} />
         <div className={styles.settingsGrid}>
           {settingsSections.map((section) => {
             const Icon = section.icon;
@@ -143,17 +266,40 @@ function Settings({ appState, setBudgetState, onNavigate, setActiveMonthId }) {
 
       <Panel title="Manage Savings Goal" subtitle="Update the monthly savings target used in every calculation." className={styles.savingsPanel}>
         <form className={styles.savingsForm} onSubmit={handleSavingsSubmit}>
-          <Input label="Savings Goal" id="settings-savings-goal" type="number" min="0" value={savingsGoal} onChange={(event) => setSavingsGoal(event.target.value)} />
+          <Input label="Savings Goal" id="settings-savings-goal" type="number" min="0" value={savings_goal} onChange={(event) => setSavingsGoal(event.target.value)} />
           <Button type="submit">Save Savings Goal</Button>
         </form>
       </Panel>
 
-      <Modal title="Manage savings goal" isOpen={isSavingsOpen} onClose={() => setIsSavingsOpen(false)}>
-        <form className={styles.savingsForm} onSubmit={handleSavingsSubmit}>
-          <Input label="Savings Goal" id="modal-savings-goal" type="number" min="0" value={savingsGoal} onChange={(event) => setSavingsGoal(event.target.value)} />
-          <Button type="submit">Save Savings Goal</Button>
+      <Panel title="Workspace Preferences" subtitle="Stored in Supabase settings and used as defaults for new months." className={styles.savingsPanel}>
+        <form className={styles.preferenceForm} onSubmit={handlePreferencesSubmit}>
+          <div className={styles.preferenceGrid}>
+            <Input label="Default Allowance" id="settings-default-allowance" type="number" min="0" value={defaultAllowance} onChange={(event) => setDefaultAllowance(event.target.value)} />
+            <Input label="Default Savings Goal" id="settings-default-savings-goal" type="number" min="0" value={defaultSavingsGoal} onChange={(event) => setDefaultSavingsGoal(event.target.value)} />
+            <Input label="Currency" id="settings-currency" maxLength={8} value={currency} onChange={(event) => setCurrency(event.target.value)} />
+            <Dropdown label="Theme" id="settings-theme" value={theme} onChange={(event) => setTheme(event.target.value)}>
+              {THEME_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Dropdown>
+            <Input label="First Day Of Month" id="settings-first-day-of-month" type="number" min="1" max="31" value={firstDayOfMonth} onChange={(event) => setFirstDayOfMonth(event.target.value)} />
+          </div>
+
+          <label className={styles.checkboxField} htmlFor="settings-notifications">
+            <input
+              id="settings-notifications"
+              type="checkbox"
+              checked={notifications}
+              onChange={(event) => setNotifications(event.target.checked)}
+            />
+            <span>Notifications enabled</span>
+          </label>
+
+          <Button type="submit">Save Preferences</Button>
         </form>
-      </Modal>
+      </Panel>
     </div>
   );
 }

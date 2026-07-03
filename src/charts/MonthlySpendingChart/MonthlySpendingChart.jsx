@@ -2,6 +2,14 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { formatCurrency } from '../../utils/formatters.js';
 
 function MonthlySpendingChart({ data }) {
+  if (!data.some((item) => item.spent > 0)) {
+    return (
+      <div style={{ height: 300, display: 'grid', placeItems: 'center', color: 'var(--color-muted)', fontWeight: 900 }}>
+        No data yet
+      </div>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>

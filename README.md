@@ -15,4 +15,4 @@ npm run dev
 npm run build
 ```
 
-This phase uses React state and Local Storage only. It does not include authentication, a backend, a database, or API calls.
+Budget and settings data are persisted in Supabase. Apply `supabase-schema.sql` to the Supabase project before running the app.

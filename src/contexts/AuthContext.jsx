@@ -10,6 +10,10 @@ function getAuthMessage(error) {
     return 'The Google sign-in window was closed before authentication finished.';
   }
 
+  if (/exchange external code|unexpected_failure|server_error/i.test(message)) {
+    return 'Google sign-in reached Supabase, but Supabase could not exchange the Google code. Verify this app uses the same Supabase project where the Google provider is configured.';
+  }
+
   if (/network|fetch|failed/i.test(message)) {
     return 'Unable to reach Supabase. Check your connection and try again.';
   }
@@ -17,114 +21,94 @@ function getAuthMessage(error) {
   return message || 'Authentication failed. Please try again.';
 }
 
-// Module-level global state to avoid state loss during Strict Mode unmount/remount cycles.
-let currentSession = null;
-let currentUser = null;
-let currentLoading = true;
-let globalSubscription = null;
-const globalListeners = new Set();
+function getRedirectError() {
+  const params = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const description = params.get('error_description') || hash.get('error_description');
+  const code = params.get('error_code') || hash.get('error_code');
 
-function registerGlobalListener() {
-  if (globalSubscription) return;
+  if (!description && !code) return '';
 
-  console.log('[AuthContext Global] Registering onAuthStateChange listener');
-  
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
-    console.log('[AuthContext Global] Event:', event, 'session:', nextSession);
-    
-    currentSession = nextSession;
-    if (nextSession) {
-      currentUser = nextSession.user;
-      
-      // Broadcast current state to all active listeners immediately
-      for (const listener of globalListeners) {
-        listener(event, currentSession, currentUser);
-      }
-
-      // Fetch fresh, verified user details from the server to enrich metadata
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user) {
-          currentUser = userData.user;
-          for (const listener of globalListeners) {
-            listener(event, currentSession, currentUser);
-          }
-        }
-      } catch (err) {
-        console.error('[AuthContext Global] getUser error:', err);
-      }
-    } else {
-      currentUser = null;
-      for (const listener of globalListeners) {
-        listener(event, currentSession, currentUser);
-      }
-    }
-    
-    currentLoading = false;
-  });
-
-  globalSubscription = subscription;
-
-  // Trigger getSession explicitly to start hash parsing and restore cached session
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    console.log('[AuthContext Global] getSession resolved:', session);
-    if (session) {
-      currentSession = session;
-      currentUser = session.user;
-      currentLoading = false;
-      for (const listener of globalListeners) {
-        listener('INITIAL_SESSION', currentSession, currentUser);
-      }
-    } else {
-      // If there is an active OAuth redirect in the hash, do NOT terminate the loading state yet.
-      // Let the onAuthStateChange SIGNED_IN event handle it.
-      const hasHash = typeof window !== 'undefined' && window.location.hash.includes('access_token=');
-      if (!hasHash) {
-        currentLoading = false;
-        for (const listener of globalListeners) {
-          listener('INITIAL_SESSION', null, null);
-        }
-      }
-    }
-  }).catch((err) => {
-    console.error('[AuthContext Global] getSession failed:', err);
-    currentLoading = false;
-    for (const listener of globalListeners) {
-      listener('INITIAL_SESSION', null, null);
-    }
-  });
+  return getAuthMessage({ message: description || code });
 }
 
-// Register listener once at module import time
-registerGlobalListener();
+function clearAuthParams() {
+  const params = new URLSearchParams(window.location.search);
+  const hasAuthParams = params.has('code') || params.has('error') || params.has('error_code') || params.has('error_description') || window.location.hash.includes('access_token=');
+
+  if (hasAuthParams) {
+    window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+  }
+}
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(currentSession);
-  const [user, setUser] = useState(currentUser);
-  const [loading, setLoading] = useState(currentLoading);
+  const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const listener = (event, nextSession, nextUser) => {
-      console.log('[AuthContext Component] State update triggered by event:', event);
-      setSession(nextSession);
-      setUser(nextUser);
-      setLoading(false);
-    };
+    let isMounted = true;
 
-    globalListeners.add(listener);
+    async function initializeAuth() {
+      setLoading(true);
 
-    // Sync state if it was updated globally during mount
-    if (session !== currentSession || user !== currentUser || loading !== currentLoading) {
-      setSession(currentSession);
-      setUser(currentUser);
-      setLoading(currentLoading);
+      try {
+        const redirectError = getRedirectError();
+        if (redirectError) {
+          setError(redirectError);
+          clearAuthParams();
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const authCode = params.get('code');
+
+        if (authCode) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
+          if (exchangeError) {
+            throw exchangeError;
+          }
+          clearAuthParams();
+        }
+
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (!isMounted) return;
+
+        setSession(data.session);
+        setUser(data.session?.user || null);
+      } catch (authError) {
+        if (!isMounted) return;
+        setSession(null);
+        setUser(null);
+        setError(getAuthMessage(authError));
+        clearAuthParams();
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     }
 
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
+      setSession(nextSession);
+      setUser(nextSession?.user || null);
+      setLoading(false);
+    });
+
     return () => {
-      globalListeners.delete(listener);
+      isMounted = false;
+      subscription.unsubscribe();
     };
-  }, [session, user, loading]);
+  }, []);
 
   const login = useCallback(async () => {
     setError('');
@@ -133,6 +117,10 @@ export function AuthProvider({ children }) {
         provider: 'google',
         options: {
           redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
 
@@ -152,10 +140,6 @@ export function AuthProvider({ children }) {
       if (signOutError) {
         throw signOutError;
       }
-      currentSession = null;
-      currentUser = null;
-      currentLoading = false;
-      
       setSession(null);
       setUser(null);
     } catch (signOutError) {

@@ -121,9 +121,32 @@
 @media (max-width: 780px) {
   .categoryRow {
     grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 18px;
+  }
+
+  .categoryRow > div:first-child {
+    border-bottom: 2px solid var(--color-ink);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    font-size: 1.1rem;
+  }
+
+  .categoryRow p {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin: 0;
   }
 
   .rowActions {
-    justify-content: flex-start;
+    margin-top: 10px;
+    justify-content: stretch;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .rowActions button {
+    flex: 1;
   }
 }

@@ -1,8 +1,8 @@
 .button {
-  min-height: 42px;
+  min-height: 44px;
   border: 2px solid var(--color-ink);
   border-radius: 12px;
-  padding: 0 15px;
+  padding: 0 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

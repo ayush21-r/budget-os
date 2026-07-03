@@ -117,13 +117,19 @@
 
   .sidebar {
     position: fixed;
-    inset: auto 12px 14px;
+    left: 12px;
+    right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    top: auto;
     z-index: 20;
     height: auto;
     padding: 10px;
     border: 2px solid var(--color-ink);
     border-radius: 18px;
     box-shadow: var(--shadow-hard);
+    flex-direction: row;
+    justify-content: stretch;
+    gap: 0;
   }
 
   .sidebar > .brand,
@@ -133,8 +139,9 @@
 
   .nav {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 6px;
+    width: 100%;
   }
 
   .navItem {
@@ -154,6 +161,6 @@
   }
 
   .main {
-    padding-bottom: 100px;
+    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
   }
 }

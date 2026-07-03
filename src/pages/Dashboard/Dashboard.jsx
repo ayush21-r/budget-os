@@ -15,35 +15,46 @@ import { usePageTitle } from '../../hooks/usePageTitle.js';
 import { formatCurrency } from '../../utils/formatters.js';
 import styles from './Dashboard.module.css';
 
-function Dashboard({ budgetState, setBudgetState, overview, isArchivedView, activeMonthId, setActiveMonthId, monthOptions }) {
+function Dashboard({ budgetState, actions, overview, isArchivedView, activeMonthId, setActiveMonthId, monthOptions }) {
   usePageTitle('Dashboard');
   const [editingExpense, setEditingExpense] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
   const [error, setError] = useState('');
 
-  function handleAddExpense(expense) {
-    setBudgetState((current) => ({
-      ...current,
-      expenses: [expense, ...current.expenses],
-    }));
+  async function handleAddExpense(expense) {
+    const category = budgetState.categories.find((item) => item.id === expense.category_id);
+    try {
+      await actions.createExpense({
+        monthId: budgetState.profile.id,
+        category_id: expense.category_id,
+        amount: expense.amount,
+        description: category ? `${category.name} Expense` : 'Expense',
+        expense_date: new Date().toISOString().slice(0, 10),
+      });
+      setError('');
+    } catch (expenseError) {
+      setError(expenseError.message || 'Unable to add expense.');
+    }
   }
 
-  function handleDeleteExpense(expenseId) {
-    setBudgetState((current) => ({
-      ...current,
-      expenses: current.expenses.filter((expense) => expense.id !== expenseId),
-    }));
+  async function handleDeleteExpense(expenseId) {
+    try {
+      await actions.deleteExpense(expenseId);
+      setError('');
+    } catch (expenseError) {
+      setError(expenseError.message || 'Unable to delete expense.');
+    }
   }
 
   function openEditExpense(expense) {
     setEditingExpense(expense);
     setEditAmount(String(expense.amount));
-    setEditCategoryId(expense.categoryId);
+    setEditCategoryId(expense.category_id);
     setError('');
   }
 
-  function handleEditExpense(event) {
+  async function handleEditExpense(event) {
     event.preventDefault();
     if (!editAmount || Number(editAmount) <= 0) {
       setError('Enter a valid expense amount.');
@@ -54,16 +65,23 @@ function Dashboard({ budgetState, setBudgetState, overview, isArchivedView, acti
       return;
     }
 
-    setBudgetState((current) => ({
-      ...current,
-      expenses: current.expenses.map((expense) =>
-        expense.id === editingExpense.id ? { ...expense, amount: Number(editAmount), categoryId: editCategoryId } : expense
-      ),
-    }));
-    setEditingExpense(null);
+    try {
+      await actions.updateExpense(editingExpense.id, {
+        amount: Number(editAmount),
+        category_id: editCategoryId,
+        description: editingExpense.description,
+        expense_date: editingExpense.expense_date,
+      });
+      setEditingExpense(null);
+      setError('');
+    } catch (expenseError) {
+      setError(expenseError.message || 'Unable to save expense.');
+    }
   }
 
-  const orderedExpenses = [...budgetState.expenses].sort((first, second) => (second.createdAt || second.id) - (first.createdAt || first.id));
+  const orderedExpenses = [...budgetState.expenses].sort(
+    (first, second) => new Date(second.created_at || 0) - new Date(first.created_at || 0)
+  );
 
   return (
     <div className="pageFade">
@@ -84,10 +102,10 @@ function Dashboard({ budgetState, setBudgetState, overview, isArchivedView, acti
 
       <section className={styles.summaryGrid}>
         <SummaryCard label="Monthly Allowance" value={formatCurrency(budgetState.profile.allowance)} note="Available for this cycle" tone="neutral" icon={Wallet} />
-        <SummaryCard label="Current Balance" value={formatCurrency(overview.currentBalance)} note="After recorded expenses" tone="good" icon={PiggyBank} />
-        <SummaryCard label="Savings Goal" value={formatCurrency(budgetState.profile.savingsGoal)} note="Planned monthly reserve" tone="good" icon={Target} />
+        <SummaryCard label="Current Balance" value={formatCurrency(overview.current_balance)} note="After recorded expenses" tone="good" icon={PiggyBank} />
+        <SummaryCard label="Savings Goal" value={formatCurrency(budgetState.profile.savings_goal)} note="Planned monthly reserve" tone="good" icon={Target} />
         <SummaryCard label="Money Spent" value={formatCurrency(overview.spent)} note={`${overview.categoryTotals.length} active categories`} tone="warning" icon={ReceiptText} />
-        <SummaryCard label="Remaining Budget" value={formatCurrency(overview.remainingBudget)} note="Available spending left" tone={overview.remainingBudget >= 0 ? 'good' : 'warning'} icon={Wallet} />
+        <SummaryCard label="Remaining Budget" value={formatCurrency(overview.remaining_budget)} note="Available spending left" tone={overview.remaining_budget >= 0 ? 'good' : 'warning'} icon={Wallet} />
       </section>
 
       {!isArchivedView ? (
@@ -120,7 +138,7 @@ function Dashboard({ budgetState, setBudgetState, overview, isArchivedView, acti
           </div>
         </Panel>
 
-        <Panel title="Recent Expenses" subtitle="Latest mock transactions.">
+        <Panel title="Recent Expenses" subtitle="Latest transactions.">
           <ExpenseTable
             expenses={orderedExpenses.slice(0, 7)}
             categories={budgetState.categories}

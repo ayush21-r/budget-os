@@ -14,9 +14,11 @@ export function getTodayInputValue() {
 export function getNextMonth(profile) {
   const [year, month] = profile.monthId.split('-').map(Number);
   const nextDate = new Date(year, month, 1);
+  const monthId = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
 
   return {
-    monthId: `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`,
+    monthId,
+    monthDate: `${monthId}-01`,
     month: new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(nextDate),
   };
 }

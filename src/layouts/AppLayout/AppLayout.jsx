@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, LogOut, Settings, SlidersHorizontal, WalletCards } from 'lucide-react';
+import { BarChart3, LayoutDashboard, LogOut, Settings, SlidersHorizontal, WalletCards, Repeat } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import styles from './AppLayout.module.css';
 
@@ -6,6 +6,7 @@ const navigation = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'setup', label: 'Monthly Setup', icon: SlidersHorizontal },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'recurring', label: 'Recurring', icon: Repeat },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

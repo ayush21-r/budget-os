@@ -2,6 +2,14 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { formatCurrency } from '../../utils/formatters.js';
 
 function BudgetPieChart({ data }) {
+  if (!data.length) {
+    return (
+      <div style={{ height: 260, display: 'grid', placeItems: 'center', color: 'var(--color-muted)', fontWeight: 900 }}>
+        No data yet
+      </div>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <PieChart>

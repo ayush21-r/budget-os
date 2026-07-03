@@ -24,17 +24,6 @@
   gap: 12px;
 }
 
-@media (max-width: 1180px) {
-  .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mainGrid,
-  .contentGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .modalForm {
   display: grid;
   gap: 14px;
@@ -56,7 +45,26 @@
   text-align: center;
 }
 
-@media (max-width: 620px) {
+@media (max-width: 1280px) {
+  .summaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .mainGrid,
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
   .summaryGrid,
   .progressGrid {
     grid-template-columns: 1fr;

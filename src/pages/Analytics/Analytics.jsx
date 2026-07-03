@@ -11,7 +11,7 @@ function Analytics({ budgetState, appState, overview, isArchivedView, activeMont
   usePageTitle('Analytics');
 
   const sortedCategories = [...overview.categoryTotals].sort((first, second) => second.spent - first.spent);
-  const monthlyData = getMonthlySpendingData(appState, appState.history || []);
+  const monthlyData = getMonthlySpendingData(budgetState, appState?.history || []);
 
   return (
     <div className="pageFade">
@@ -25,7 +25,7 @@ function Analytics({ budgetState, appState, overview, isArchivedView, activeMont
         <Panel title="Category Spend" subtitle="Share of current recorded expenses.">
           <BudgetPieChart data={overview.categoryTotals.filter((category) => category.spent > 0)} />
         </Panel>
-        <Panel title="Monthly Spending" subtitle="Current and archived spending trend.">
+        <Panel title="Monthly Spending" subtitle={`${budgetState.profile.month} spending and savings.`}>
           <MonthlySpendingChart data={monthlyData} />
         </Panel>
       </section>
@@ -33,7 +33,7 @@ function Analytics({ budgetState, appState, overview, isArchivedView, activeMont
       <section className={styles.bottomGrid}>
         <Panel
           title="Category Summary"
-          subtitle={`${formatCurrency(overview.spent)} total expenses, ${formatCurrency(overview.remainingBudget)} remaining budget.`}
+          subtitle={`${formatCurrency(overview.spent)} total expenses, ${formatCurrency(overview.remaining_budget)} remaining budget.`}
           actions={
             <select className={styles.monthSelect} value={activeMonthId} onChange={(event) => setActiveMonthId(event.target.value)}>
               {monthOptions.map((month) => (
@@ -47,11 +47,22 @@ function Analytics({ budgetState, appState, overview, isArchivedView, activeMont
           <div className={styles.summaryList}>
             {overview.categoryTotals.map((category) => (
               <article key={category.id} className={styles.summaryRow}>
-                <span style={{ backgroundColor: category.color }} />
-                <strong>{category.name}</strong>
-                <p>{formatCurrency(category.budget)} budget</p>
-                <p>{formatCurrency(category.spent)} spent</p>
-                <p>{formatCurrency(category.remaining)} left</p>
+                <div className={styles.summaryHeader}>
+                  <span style={{ backgroundColor: category.color }} />
+                  <strong>{category.name}</strong>
+                </div>
+                <p className={styles.summaryValue}>
+                  <span>Budget</span>
+                  <strong>{formatCurrency(category.budget)}</strong>
+                </p>
+                <p className={styles.summaryValue}>
+                  <span>Spent</span>
+                  <strong>{formatCurrency(category.spent)}</strong>
+                </p>
+                <p className={styles.summaryValue}>
+                  <span>Remaining</span>
+                  <strong>{formatCurrency(category.remaining)}</strong>
+                </p>
               </article>
             ))}
           </div>
