@@ -103,7 +103,13 @@ function Dashboard({ budgetState, actions, overview, isArchivedView, activeMonth
       <section className={styles.summaryGrid}>
         <SummaryCard label="Monthly Allowance" value={formatCurrency(budgetState.profile.allowance)} note="Available for this cycle" tone="neutral" icon={Wallet} />
         <SummaryCard label="Current Balance" value={formatCurrency(overview.current_balance)} note="After recorded expenses" tone="good" icon={PiggyBank} />
-        <SummaryCard label="Savings Goal" value={formatCurrency(budgetState.profile.savings_goal)} note="Planned monthly reserve" tone="good" icon={Target} />
+        <SummaryCard
+          label="Savings"
+          value={formatCurrency(overview.actualSavings)}
+          note={`Goal: ${formatCurrency(budgetState.profile.savings_goal)}`}
+          tone="good"
+          icon={PiggyBank}
+        />
         <SummaryCard label="Money Spent" value={formatCurrency(overview.spent)} note={`${overview.categoryTotals.length} active categories`} tone="warning" icon={ReceiptText} />
         <SummaryCard label="Remaining Budget" value={formatCurrency(overview.remaining_budget)} note="Available spending left" tone={overview.remaining_budget >= 0 ? 'good' : 'warning'} icon={Wallet} />
       </section>

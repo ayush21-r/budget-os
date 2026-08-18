@@ -32,9 +32,9 @@ function MonthlySetup({ budgetState, actions, overview, isArchivedView }) {
   }, [overview.availableSpending, overview.allocated]);
 
   function getAllocationMessage(unallocated = overview.unallocated) {
-    if (unallocated < 0) return 'You have exceeded your budget.';
-    if (unallocated > 0) return `You still have ${formatCurrency(unallocated)} left to allocate.`;
-    return 'Your available spending is fully allocated.';
+    if (unallocated < 0) return 'Category budgets exceed monthly allowance.';
+    if (unallocated > 0) return `You have ${formatCurrency(unallocated)} of monthly allowance unallocated.`;
+    return 'Your monthly allowance is fully allocated.';
   }
 
   async function handlePlanUpdate(event) {
@@ -50,8 +50,8 @@ function MonthlySetup({ budgetState, actions, overview, isArchivedView }) {
       setMessage('Savings goal cannot exceed monthly allowance.');
       return;
     }
-    if (overview.allocated > nextAllowance - nextSavings) {
-      setMessage('You have exceeded your budget.');
+    if (overview.allocated > nextAllowance) {
+      setMessage('Category allocations cannot exceed monthly allowance.');
       return;
     }
 
@@ -153,7 +153,7 @@ function MonthlySetup({ budgetState, actions, overview, isArchivedView }) {
             {!isArchivedView ? <Input label="Monthly Allowance" id="monthly-allowance" type="number" min="0" value={allowance} onChange={(event) => setAllowance(event.target.value)} /> : null}
           </form>
         </Panel>
-        <Panel title="Savings Goal" subtitle="Amount reserved before spending allocations.">
+        <Panel title="Savings Goal" subtitle="Planned monthly target.">
           <form className={styles.planForm} onSubmit={handlePlanUpdate}>
             <div className={styles.metric}>
               <strong>{formatCurrency(budgetState.profile.savings_goal)}</strong>

@@ -81,12 +81,18 @@ export function useBudgetWorkspace() {
         await refresh(monthId);
       },
       createNewMonth: async () => {
-        const data = await createNewMonth(user.id);
-        activeMonthIdRef.current = data.id;
-        await refresh(data.id);
+        const result = await createNewMonth(user.id);
+        if (result?.monthId) {
+          activeMonthIdRef.current = result.monthId;
+          await refresh(result.monthId);
+        } else {
+          await refresh();
+        }
+        return result;
       },
       deleteMonth: async (monthId) => {
-        await deleteMonth(monthId);
+        await deleteMonth(monthId, user.id);
+        activeMonthIdRef.current = null;
         await refresh();
       },
       updateSettings: async (payload) => {

@@ -1,11 +1,13 @@
 import { Download, FileJson, LogOut, Repeat, RotateCcw, Tags, Trash2, User, FileText } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
+import { supabase } from '../../lib/supabase.js';
 import PageHeader from '../../components/PageHeader/PageHeader.jsx';
 import Panel from '../../components/Panel/Panel.jsx';
 import Button from '../../components/ui/Button/Button.jsx';
 import Input from '../../components/ui/Input/Input.jsx';
 import Dropdown from '../../components/ui/Dropdown/Dropdown.jsx';
+import Modal from '../../components/ui/Modal/Modal.jsx';
 import { usePageTitle } from '../../hooks/usePageTitle.js';
 import { calculateBudgetOverview } from '../../utils/budgetUtils.js';
 import BudgetReport from '../../components/BudgetReport/BudgetReport.jsx';
@@ -41,6 +43,9 @@ function Settings({ appState, actions, onNavigate }) {
   const [message, setMessage] = useState('');
   const importInputRef = useRef(null);
 
+  const [activeModal, setActiveModal] = useState(null);
+  const [sessionData, setSessionData] = useState(null);
+  const [activeActionTitle, setActiveActionTitle] = useState(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const reportRef = useRef(null);
   const overview = calculateBudgetOverview(appState);
@@ -58,7 +63,7 @@ function Settings({ appState, actions, onNavigate }) {
   async function handleSavingsSubmit(event) {
     event.preventDefault();
     const nextSavings = Number(savings_goal);
-    if (nextSavings < 0) {
+    if (isNaN(nextSavings) || nextSavings < 0) {
       setMessage('Savings goal cannot be negative.');
       return;
     }
@@ -120,7 +125,7 @@ function Settings({ appState, actions, onNavigate }) {
           pdf.addImage(imgData, 'PNG', 0, 0, 210, 297);
         }
 
-        const fileName = `budgetos-report-${appState.profile.month.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`;
+        const fileName = `budgetos-report-${(appState.profile?.month || 'summary').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`;
         pdf.save(fileName);
         setMessage('PDF Report downloaded successfully.');
       } catch (pdfError) {
@@ -150,14 +155,35 @@ function Settings({ appState, actions, onNavigate }) {
 
   async function handlePreferencesSubmit(event) {
     event.preventDefault();
+    const parsedAllowance = Number(defaultAllowance);
+    const parsedSavings = Number(defaultSavingsGoal);
+    const parsedFirstDay = Number(firstDayOfMonth);
+
+    if (isNaN(parsedAllowance) || parsedAllowance < 0) {
+      setMessage('Default allowance cannot be negative.');
+      return;
+    }
+    if (isNaN(parsedSavings) || parsedSavings < 0) {
+      setMessage('Default savings goal cannot be negative.');
+      return;
+    }
+    if (parsedSavings > parsedAllowance) {
+      setMessage('Default savings goal cannot exceed default allowance.');
+      return;
+    }
+    if (isNaN(parsedFirstDay) || parsedFirstDay < 1 || parsedFirstDay > 31) {
+      setMessage('First day of month must be between 1 and 31.');
+      return;
+    }
+
     try {
       await actions.updateSettings({
-        currency: currency.trim().toUpperCase(),
+        currency: currency.trim().toUpperCase() || 'INR',
         theme,
         notifications,
-        firstDayOfMonth: Number(firstDayOfMonth),
-        defaultAllowance: Number(defaultAllowance),
-        defaultSavingsGoal: Number(defaultSavingsGoal),
+        firstDayOfMonth: parsedFirstDay,
+        defaultAllowance: parsedAllowance,
+        defaultSavingsGoal: parsedSavings,
       });
       setMessage('Workspace preferences saved.');
     } catch (settingsError) {
@@ -166,29 +192,23 @@ function Settings({ appState, actions, onNavigate }) {
   }
 
   async function handleConfigure(title) {
+    setActiveActionTitle(title);
     try {
-      if (title === 'Manage Categories') onNavigate('setup');
-      if (title === 'Export Data') handleExportJson();
-      if (title === 'New Month') {
-        await actions.createNewMonth();
-        setMessage(`Created a new month using the saved defaults of ${appState.settings?.defaultAllowance ?? appState.profile.allowance} and ${appState.settings?.defaultSavingsGoal ?? appState.profile.savings_goal}.`);
-      }
-      if (title === 'Delete Month') {
-        await actions.deleteMonth(appState.profile.id);
-        await actions.createNewMonth();
-        setMessage('Selected month deleted.');
-      }
-      if (title === 'Reset Data') {
-        await actions.resetAllData();
-        setMessage('All budget data reset.');
-      }
-      if (title === 'Import') {
+      if (title === 'Manage Categories') {
+        onNavigate('setup');
+      } else if (title === 'Import') {
         importInputRef.current?.click();
+      } else if (title === 'Supabase Session') {
+        const { data } = await supabase.auth.getSession();
+        setSessionData(data?.session || null);
+        setActiveModal('Supabase Session');
+      } else {
+        setActiveModal(title);
       }
-      if (title === 'Account') setMessage(user?.email ? `Signed in as ${user.email}.` : 'No account email available.');
-      if (title === 'Supabase Session') setMessage(user?.id ? `Active Supabase session for ${user.id}.` : 'No active Supabase session.');
     } catch (settingsError) {
-      setMessage(settingsError.message || 'Unable to update settings.');
+      setMessage(settingsError.message || 'Unable to open settings.');
+    } finally {
+      setActiveActionTitle(null);
     }
   }
 
@@ -204,10 +224,22 @@ function Settings({ appState, actions, onNavigate }) {
 
       {/* Hidden print report container */}
       {isGeneratingPdf && (
-        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: '-9999px',
+            width: '794px',
+            height: '1123px',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            zIndex: -9999,
+          }}
+        >
           <BudgetReport
             budgetState={appState}
             appState={appState}
+            user={user}
             overview={overview}
             reportRef={reportRef}
           />
@@ -236,7 +268,13 @@ function Settings({ appState, actions, onNavigate }) {
         actions={
           <>
             <Button variant="secondary" icon={RotateCcw} onClick={() => handleConfigure('New Month')}>New Month</Button>
-            <Button variant="secondary" icon={FileText} onClick={handleDownloadPdf} disabled={isGeneratingPdf}>
+            <Button
+              variant="secondary"
+              icon={FileText}
+              className={styles.pdfDownloadButton}
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+            >
               {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF Report'}
             </Button>
             <Button variant="secondary" icon={Download} onClick={handleExportJson}>Export JSON</Button>
@@ -248,6 +286,7 @@ function Settings({ appState, actions, onNavigate }) {
         <div className={styles.settingsGrid}>
           {settingsSections.map((section) => {
             const Icon = section.icon;
+            const isWorking = activeActionTitle === section.title;
             return (
               <article className={styles.settingCard} key={section.title}>
                 <div className={styles.iconBox}>
@@ -257,7 +296,9 @@ function Settings({ appState, actions, onNavigate }) {
                   <h2>{section.title}</h2>
                   <p>{section.description}</p>
                 </div>
-                <Button variant="secondary" onClick={() => handleConfigure(section.title)}>Configure</Button>
+                <Button variant="secondary" onClick={() => handleConfigure(section.title)} disabled={isWorking}>
+                  {isWorking ? 'Working...' : 'Configure'}
+                </Button>
               </article>
             );
           })}
@@ -300,6 +341,188 @@ function Settings({ appState, actions, onNavigate }) {
           <Button type="submit">Save Preferences</Button>
         </form>
       </Panel>
+
+      {/* Account Details Modal */}
+      <Modal title="Account Details" isOpen={activeModal === 'Account'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <div className={styles.modalRow}>
+            <span>Full Name</span>
+            <strong>{user?.user_metadata?.full_name || 'No Name'}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Email</span>
+            <strong>{user?.email || 'N/A'}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Auth Provider</span>
+            <strong>Google OAuth</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>User ID</span>
+            <strong style={{ fontSize: '0.75rem' }}>{user?.id}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Status</span>
+            <span className={styles.badgeSuccess}>Connected</span>
+          </div>
+          <div className={styles.modalActions}>
+            <Button variant="secondary" icon={LogOut} onClick={() => { setActiveModal(null); logout(); }}>Log Out</Button>
+            <Button onClick={() => setActiveModal(null)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Supabase Session Modal */}
+      <Modal title="Supabase Session" isOpen={activeModal === 'Supabase Session'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <div className={styles.modalRow}>
+            <span>Session Status</span>
+            <span className={styles.badgeSuccess}>Active & Verified</span>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Token Expiration</span>
+            <strong>
+              {sessionData?.expires_at
+                ? `In ~${Math.max(0, Math.round((sessionData.expires_at - Date.now() / 1000) / 60))} minutes`
+                : 'Active live session'}
+            </strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>User ID</span>
+            <strong style={{ fontSize: '0.75rem' }}>{user?.id}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Realtime Engine</span>
+            <span className={styles.badgeSuccess}>Live</span>
+          </div>
+          <div className={styles.modalActions}>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const { data } = await supabase.auth.getSession();
+                setSessionData(data?.session || null);
+                setMessage('Supabase session refreshed and verified.');
+              }}
+            >
+              Verify Again
+            </Button>
+            <Button onClick={() => setActiveModal(null)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* New Month Modal */}
+      <Modal title="Start New Month" isOpen={activeModal === 'New Month'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <p className={styles.warningText}>
+            This will start the current calendar month and automatically roll over your remaining savings from the previous month into your new month's savings goal.
+          </p>
+          <div className={styles.modalRow}>
+            <span>Current Month</span>
+            <strong>{appState.profile?.month}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Default Allowance</span>
+            <strong>₹{appState.settings?.defaultAllowance ?? appState.profile.allowance}</strong>
+          </div>
+          <div className={styles.modalRow}>
+            <span>Base Savings Target</span>
+            <strong>₹{appState.settings?.defaultSavingsGoal ?? appState.profile.savings_goal}</strong>
+          </div>
+          <div className={styles.modalActions}>
+            <Button variant="secondary" onClick={() => setActiveModal(null)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                setActiveModal(null);
+                const result = await actions.createNewMonth();
+                if (result?.created) {
+                  const carriedText = result.carriedSavings > 0 ? ` with ₹${result.carriedSavings} savings carried forward` : '';
+                  setMessage(`Created new month (${result.monthName})${carriedText}. Savings goal set to ₹${result.savingsGoal}.`);
+                } else {
+                  setMessage(`The workspace is already on the current month (${result?.monthName || appState.profile.month}).`);
+                }
+              }}
+            >
+              Start New Month
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Month Modal */}
+      <Modal title="Delete Month" isOpen={activeModal === 'Delete Month'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <p className={styles.warningText}>
+            Are you sure you want to delete the budget for <strong>{appState.profile?.month}</strong>? All expenses and category limits recorded for this month will be removed.
+          </p>
+          <div className={styles.modalActions}>
+            <Button variant="secondary" onClick={() => setActiveModal(null)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                const targetMonth = appState.profile.month;
+                setActiveModal(null);
+                await actions.deleteMonth(appState.profile.id);
+                setMessage(`Selected month (${targetMonth}) deleted.`);
+              }}
+            >
+              Confirm Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reset Data Modal */}
+      <Modal title="Reset All Workspace Data" isOpen={activeModal === 'Reset Data'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <p className={styles.warningText}>
+            Warning: This action will permanently wipe all monthly budgets, historical records, categories, expenses, and recurring bills. A clean current month will be created with default settings.
+          </p>
+          <div className={styles.modalActions}>
+            <Button variant="secondary" onClick={() => setActiveModal(null)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                setActiveModal(null);
+                await actions.resetAllData();
+                setMessage('All budget data reset to defaults.');
+              }}
+            >
+              Confirm Reset
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Export Data Modal */}
+      <Modal title="Export Data" isOpen={activeModal === 'Export Data'} onClose={() => setActiveModal(null)}>
+        <div className={styles.modalContent}>
+          <p className={styles.warningText}>
+            Download a full JSON backup of your BudgetOS workspace or generate an executive multi-page PDF summary.
+          </p>
+          <div className={styles.modalActions}>
+            <Button
+              variant="secondary"
+              icon={Download}
+              onClick={() => {
+                handleExportJson();
+                setActiveModal(null);
+              }}
+            >
+              Export JSON
+            </Button>
+            <Button
+              icon={FileText}
+              className={styles.pdfDownloadButton}
+              disabled={isGeneratingPdf}
+              onClick={() => {
+                setActiveModal(null);
+                handleDownloadPdf();
+              }}
+            >
+              {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF Report'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

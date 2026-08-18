@@ -1,4 +1,4 @@
-import { WalletCards, CalendarDays, TrendingUp, AlertCircle, CheckCircle2, Award } from 'lucide-react';
+import { WalletCards, CalendarDays, TrendingUp, AlertCircle, CheckCircle2, Award, ShieldCheck, FileCheck, Layers } from 'lucide-react';
 import { Cell, PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
 import { formatCurrency } from '../../utils/formatters.js';
 import { formatDisplayDate } from '../../utils/dateUtils.js';
@@ -7,160 +7,166 @@ import styles from './BudgetReport.module.css';
 
 const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#64748b', '#3b82f6'];
 
-function BudgetReport({ budgetState, appState, overview, reportRef }) {
+function BudgetReport({ budgetState, appState, user, overview, reportRef }) {
   const profile = budgetState.profile;
-  const categories = budgetState.categories;
-  const expenses = budgetState.expenses;
-  const recurringExpenses = appState.recurringExpenses || [];
+  const categories = budgetState.categories || [];
+  const expenses = budgetState.expenses || [];
+  const recurringExpenses = (appState.recurringExpenses || []).filter(r => r.active !== false);
+
+  // Authenticated User Identity
+  const accountHolderName = user?.user_metadata?.full_name || user?.user_metadata?.name || appState.profile?.fullName || 'Account Holder';
+  const accountHolderEmail = user?.email || appState.profile?.email || 'N/A';
 
   const allowance = Number(profile.allowance || 0);
   const spent = Number(overview.spent || 0);
   const savings_goal = Number(profile.savings_goal || 0);
   const remaining_budget = Number(overview.remaining_budget || 0);
-  const current_balance = Number(overview.current_balance || 0);
+  const netSurplus = Math.max(0, allowance - spent);
 
   const budgetUtilization = allowance > 0 ? Math.min((spent / allowance) * 100, 100) : 0;
-  const savingsProgress = savings_goal > 0 ? Math.min((remaining_budget / savings_goal) * 100, 100) : 0;
+  const savingsRate = allowance > 0 ? Math.round((netSurplus / allowance) * 100) : 0;
+  const savingsProgress = savings_goal > 0 ? Math.min((netSurplus / savings_goal) * 100, 500) : 0;
 
-  // Sorted categories
-  const sortedCategoryTotals = [...overview.categoryTotals].sort((a, b) => b.spent - a.spent);
+  // Category mapping
+  const categoryMap = new Map(categories.map(c => [c.id, c]));
+
+  // Sorted categories: categories with spending first, then by budget
+  const sortedCategoryTotals = [...overview.categoryTotals].sort((a, b) => {
+    if (b.spent !== a.spent) return b.spent - a.spent;
+    return b.budget - a.budget;
+  });
+
+  const categoriesWithSpend = sortedCategoryTotals.filter(c => c.spent > 0);
+  const overBudgetCategories = sortedCategoryTotals.filter(c => c.spent > c.budget && c.budget > 0);
 
   // Performance calculations
-  const totalSavings = allowance - spent;
-  const utilization = allowance > 0 ? (spent / allowance) * 100 : 0;
   const averageExpense = expenses.length > 0 ? spent / expenses.length : 0;
   const highestExpense = expenses.length > 0 ? Math.max(...expenses.map(e => Number(e.amount))) : 0;
-  const lowestExpense = expenses.length > 0 ? Math.min(...expenses.map(e => Number(e.amount))) : 0;
-  const largestCategory = overview.highestSpendingCategory?.name || 'None';
 
   // Dynamic Insights
   const generateInsights = () => {
     const list = [];
 
-    // 1. Savings Goal achievement
-    if (savings_goal > 0) {
-      if (remaining_budget >= savings_goal) {
+    if (spent === 0) {
+      list.push({
+        text: `Optimal Capital Retention: 100% of the ${formatCurrency(allowance)} monthly allowance was preserved with zero expenditures.`,
+        tone: 'success'
+      });
+      list.push({
+        text: `Savings Target Fulfillment: Full monthly surplus of ${formatCurrency(netSurplus)} completely covers the ${formatCurrency(savings_goal)} goal.`,
+        tone: 'success'
+      });
+      list.push({
+        text: `Zero Category Breaches: All ${categories.length} configured spending categories remained entirely within planned allocations.`,
+        tone: 'neutral'
+      });
+    } else {
+      // 1. Savings Goal achievement
+      if (savings_goal > 0) {
+        if (netSurplus >= savings_goal) {
+          list.push({
+            text: `Savings Goal Met: Retained ${formatCurrency(netSurplus)} in net surplus, exceeding the ${formatCurrency(savings_goal)} target.`,
+            tone: 'success'
+          });
+        } else {
+          list.push({
+            text: `Savings Goal Variance: Retained ${formatCurrency(netSurplus)} toward the ${formatCurrency(savings_goal)} target (${formatCurrency(savings_goal - netSurplus)} short).`,
+            tone: 'warning'
+          });
+        }
+      }
+
+      // 2. Budget utilization insight
+      if (budgetUtilization > 90) {
         list.push({
-          text: `Savings Goal achieved: Saved ${formatCurrency(remaining_budget)}, exceeding target of ${formatCurrency(savings_goal)}.`,
-          tone: 'success'
+          text: `Critical Budget Burn: Monthly utilization reached ${Math.round(budgetUtilization)}% (${formatCurrency(spent)} of ${formatCurrency(allowance)}).`,
+          tone: 'danger'
+        });
+      } else if (budgetUtilization > 75) {
+        list.push({
+          text: `Moderate Utilization: Used ${Math.round(budgetUtilization)}% of allowance. Discretionary cushion is ${formatCurrency(remaining_budget)}.`,
+          tone: 'warning'
         });
       } else {
         list.push({
-          text: `Savings Goal of ${formatCurrency(savings_goal)} was not fully met. Remaining balance: ${formatCurrency(remaining_budget)}.`,
-          tone: 'warning'
+          text: `Healthy Budget Control: Utilization maintained at ${Math.round(budgetUtilization)}%, leaving a comfortable ${formatCurrency(remaining_budget)} surplus.`,
+          tone: 'success'
         });
       }
-    }
 
-    // 2. Budget utilization insight
-    if (utilization > 90) {
-      list.push({
-        text: `Critical: Monthly budget utilization is at ${Math.round(utilization)}%. High risk of deficit.`,
-        tone: 'danger'
-      });
-    } else if (utilization > 75) {
-      list.push({
-        text: `Warning: Budget utilization reached ${Math.round(utilization)}%. Moderate discretionary spending warning.`,
-        tone: 'warning'
-      });
-    } else {
-      list.push({
-        text: `Excellent: Budget utilization is healthy at ${Math.round(utilization)}%, leaving a surplus.`,
-        tone: 'success'
-      });
-    }
-
-    // 3. Food spending check
-    const foodCat = overview.categoryTotals.find(c => c.name.toLowerCase() === 'food');
-    if (foodCat && spent > 0) {
-      const foodPct = Math.round((foodCat.spent / spent) * 100);
-      if (foodPct > 30) {
+      // 3. Over-budget category check
+      if (overBudgetCategories.length > 0) {
+        const topOver = overBudgetCategories[0];
+        const overAmt = topOver.spent - topOver.budget;
         list.push({
-          text: `Food spending is high, accounting for ${foodPct}% of your total monthly expenditures.`,
-          tone: 'warning'
+          text: `Category Alert: ${topOver.name} exceeded its limit by ${formatCurrency(overAmt)} (${Math.round((topOver.spent / topOver.budget) * 100)}% utilized).`,
+          tone: 'danger'
         });
+      }
+
+      // 4. Concentration check
+      if (categoriesWithSpend.length > 0) {
+        const topCat = categoriesWithSpend[0];
+        const topPct = Math.round((topCat.spent / spent) * 100);
+        if (topPct >= 35) {
+          list.push({
+            text: `High Concentration: ${topCat.name} represents ${topPct}% of your total recorded spending (${formatCurrency(topCat.spent)}).`,
+            tone: 'warning'
+          });
+        }
       }
     }
 
-    // 4. Over-budget category check
-    const overBudgetCats = overview.categoryTotals.filter(c => c.spent > c.budget);
-    overBudgetCats.forEach(c => {
-      const overPct = Math.round(((c.spent - c.budget) / c.budget) * 100);
-      list.push({
-        text: `Category warning: Exceeded ${c.name} allocation by ${overPct}% (+${formatCurrency(c.spent - c.budget)}).`,
-        tone: 'danger'
-      });
-    });
-
-    // 5. Under-budget category check
-    const underBudgetCats = overview.categoryTotals.filter(c => c.spent <= c.budget && c.spent > 0);
-    if (underBudgetCats.length > 0) {
-      const bestCat = underBudgetCats.sort((a, b) => (a.spent / a.budget) - (b.spent / b.budget))[0];
-      list.push({
-        text: `${bestCat.name} spending stayed well under budget, using only ${Math.round((bestCat.spent / bestCat.budget) * 100)}% of allocation.`,
-        tone: 'success'
-      });
-    }
-
-    return list.slice(0, 5);
+    return list.slice(0, 3);
   };
 
   // Dynamic Recommendations
   const generateRecommendations = () => {
     const list = [];
 
-    const foodCat = overview.categoryTotals.find(c => c.name.toLowerCase() === 'food');
-    if (foodCat && foodCat.spent > foodCat.budget) {
+    if (spent === 0) {
       list.push({
-        text: `Reduce food spending by ${formatCurrency(foodCat.spent - foodCat.budget)} next cycle to align with allocation.`,
+        text: `Carry forward unspent surplus (${formatCurrency(netSurplus)}) into the next month's savings fund or investment allocation.`,
         primary: true
       });
-    }
-
-    const overBudgetCats = overview.categoryTotals.filter(c => c.spent > c.budget);
-    if (overBudgetCats.length > 0) {
       list.push({
-        text: `Reallocate budget next month to increase limits for over-budget categories: ${overBudgetCats.map(c => c.name).join(', ')}.`,
-        primary: true
-      });
-    }
-
-    if (totalSavings > savings_goal * 1.5) {
-      list.push({
-        text: `You have an extra surplus of ${formatCurrency(totalSavings - savings_goal)}. Consider increasing your savings goal next month.`,
+        text: `Consider adjusting your base monthly savings target higher if this spending velocity continues regularly.`,
         primary: false
       });
+    } else {
+      if (overBudgetCategories.length > 0) {
+        list.push({
+          text: `Reallocate category ceilings for ${overBudgetCategories.map(c => c.name).join(', ')} next cycle to reflect actual spending reality.`,
+          primary: true
+        });
+      }
+
+      if (netSurplus > savings_goal * 1.3) {
+        list.push({
+          text: `Surplus of ${formatCurrency(netSurplus - savings_goal)} above goal detected. Great opportunity to boost emergency or investment funds.`,
+          primary: false
+        });
+      } else if (netSurplus < savings_goal) {
+        list.push({
+          text: `Trim discretionary expenses by ${formatCurrency(savings_goal - netSurplus)} in future weeks to hit full savings targets consistently.`,
+          primary: true
+        });
+      }
+
+      const lowUsageCats = sortedCategoryTotals.filter(c => c.spent === 0 && c.budget > 300);
+      if (lowUsageCats.length > 0) {
+        list.push({
+          text: `Review inactive category allowances in ${lowUsageCats.slice(0, 2).map(c => c.name).join(', ')} to free up flexible monthly cashflow.`,
+          primary: false
+        });
+      }
     }
 
-    const entCat = overview.categoryTotals.find(c => c.name.toLowerCase() === 'entertainment');
-    if (entCat && entCat.spent < 0.15 * entCat.budget) {
-      list.push({
-        text: `Discretionary entertainment spending is very low. Standard life balance can be safely accommodated.`,
-        primary: false
-      });
-    }
-
-    const lowUsageCats = overview.categoryTotals.filter(c => c.spent < 0.25 * c.budget && c.budget > 200);
-    lowUsageCats.forEach(c => {
-      list.push({
-        text: `Underutilized allocation in ${c.name}. Reduce category budget next month to free up allowance.`,
-        primary: false
-      });
-    });
-
-    return list.slice(0, 4);
+    return list.slice(0, 2);
   };
 
   const insights = generateInsights();
   const recommendations = generateRecommendations();
-
-  // Chunker for Expense History pages
-  const expenseChunks = [];
-  const chunkSize = 20;
-  const sortedExpenses = [...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date));
-  for (let i = 0; i < sortedExpenses.length; i += chunkSize) {
-    expenseChunks.push(sortedExpenses.slice(i, i + chunkSize));
-  }
 
   // Monthly Spending Trend Data
   const monthlySpendingData = getMonthlySpendingData(budgetState, appState.history || []);
@@ -168,27 +174,44 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
   // Category Distribution Data (Pie Chart)
   const pieData = overview.categoryTotals
     .filter(c => c.spent > 0)
-    .map(c => ({ name: c.name, value: c.spent }));
+    .map(c => ({ name: c.name, value: c.spent, color: c.color }));
 
   // Budget vs Spent Bar Chart Data
   const barData = overview.categoryTotals
     .filter(c => c.budget > 0 || c.spent > 0)
     .map(c => ({ name: c.name, budget: c.budget, spent: c.spent }));
 
-  const totalPages = 3 + Math.max(1, expenseChunks.length) + 1; // Cover/Exec + Breakdown/Perf + Charts + ExpenseHistory pages + Insights page
-  let pageCounter = 1;
+  // Sorted Expenses
+  const sortedExpenses = [...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date));
+
+  // Determine dynamic pages required
+  // If expenses <= 10: everything fits on 3 pages!
+  // If expenses > 10: expenses chunk into pages of 14 rows each.
+  const expenseChunks = [];
+  if (sortedExpenses.length > 10) {
+    const chunkSize = 14;
+    for (let i = 0; i < sortedExpenses.length; i += chunkSize) {
+      expenseChunks.push(sortedExpenses.slice(i, i + chunkSize));
+    }
+  }
+
+  // Calculate total pages accurately
+  const totalPages = sortedExpenses.length > 10 ? 2 + expenseChunks.length + 1 : 3;
 
   const renderHeader = (subtitle) => (
     <header className={styles.header}>
       <div className={styles.brand}>
         <div className={styles.brandMark}>
-          <WalletCards size={16} />
+          <WalletCards size={18} />
         </div>
-        <span className={styles.brandText}>BudgetOS</span>
+        <div className={styles.brandDetails}>
+          <span className={styles.brandText}>BudgetOS</span>
+          <span className={styles.brandSubtext}>Financial Management Engine</span>
+        </div>
       </div>
       <div className={styles.reportTitleBlock}>
-        <h1>Monthly Budget Report</h1>
-        <p>{subtitle}</p>
+        <h1>Monthly Financial Statement</h1>
+        <p>{subtitle} • {profile.month}</p>
       </div>
     </header>
   );
@@ -196,9 +219,11 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
   const renderFooter = (pageNumber) => (
     <footer className={styles.footer}>
       <div className={styles.footerLeft}>
-        <span>BudgetOS Automatic Report</span>
+        <span>BudgetOS Verified Record</span>
         <span>•</span>
         <span>{profile.month}</span>
+        <span>•</span>
+        <span>Ref: {profile.id?.slice(0, 8).toUpperCase() || 'FIN-REC'}</span>
       </div>
       <div>
         Page {pageNumber} of {totalPages}
@@ -208,55 +233,61 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
 
   return (
     <div className={styles.reportContainer} ref={reportRef}>
-      {/* PAGE 1: COVER & EXECUTIVE SUMMARY */}
+      {/* ========================================================================= */}
+      {/* PAGE 1: EXECUTIVE OVERVIEW & KEY FINANCIAL INDICATORS */}
+      {/* ========================================================================= */}
       <div className={styles.pdfPage}>
-        {renderHeader("Executive Summary")}
         <div>
+          {renderHeader("Executive Summary")}
+
+          {/* Metadata Block */}
           <div className={styles.metaGrid}>
             <div className={styles.metaCol}>
-              <h3>Prepared For</h3>
-              <p>{appState.profile?.fullName || 'Valued Client'}</p>
-              <h3>Email</h3>
-              <p>{appState.profile?.email || 'user@budgetos.com'}</p>
+              <h3>Account Holder</h3>
+              <p>{accountHolderName}</p>
+              <h3>Account Email</h3>
+              <p>{accountHolderEmail}</p>
             </div>
             <div className={styles.metaCol}>
               <h3>Reporting Cycle</h3>
               <p>{profile.month}</p>
-              <h3>Generated On</h3>
+              <h3>Statement Date</h3>
               <p>{new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
             </div>
           </div>
 
-          <h2 className={styles.sectionTitle}>Executive Summary</h2>
+          {/* Executive Summary 4-KPI Grid */}
+          <h2 className={styles.sectionTitle}>Executive KPI Summary</h2>
           <div className={styles.summaryGrid}>
             <div className={styles.summaryCard}>
-              <span>Allowance</span>
+              <span>Monthly Allowance</span>
               <strong>{formatCurrency(allowance)}</strong>
-              <small>Monthly income</small>
+              <small>Total budget allocation</small>
             </div>
             <div className={styles.summaryCard}>
               <span>Total Spent</span>
               <strong>{formatCurrency(spent)}</strong>
-              <small>{expenses.length} recorded payments</small>
+              <small>{expenses.length} payments recorded</small>
             </div>
             <div className={styles.summaryCard}>
-              <span>Remaining</span>
-              <strong>{formatCurrency(remaining_budget)}</strong>
-              <small>Discretionary balance</small>
+              <span>Net Surplus / Remaining</span>
+              <strong>{formatCurrency(netSurplus)}</strong>
+              <small>Unspent disposable capital</small>
             </div>
             <div className={styles.summaryCard}>
-              <span>Savings Goal</span>
-              <strong>{formatCurrency(savings_goal)}</strong>
-              <small>{Math.round(savingsProgress)}% achieved</small>
+              <span>Savings</span>
+              <strong>{formatCurrency(netSurplus)}</strong>
+              <small>Goal: {formatCurrency(savings_goal)} ({Math.round(savingsProgress)}%)</small>
             </div>
           </div>
 
-          <h2 className={styles.sectionTitle}>Month Overview</h2>
+          {/* Financial Health & Utilization Progress */}
+          <h2 className={styles.sectionTitle}>Financial Health & Plan Utilization</h2>
           <div className={styles.progressSection}>
             <div className={styles.progressItem}>
               <div className={styles.progressHeader}>
                 <span>Budget Utilization (Spent vs Allowance)</span>
-                <span>{Math.round(budgetUtilization)}%</span>
+                <span>{Math.round(budgetUtilization)}% ({formatCurrency(spent)} / {formatCurrency(allowance)})</span>
               </div>
               <div className={styles.progressBar}>
                 <div 
@@ -267,8 +298,8 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
             </div>
             <div className={styles.progressItem}>
               <div className={styles.progressHeader}>
-                <span>Savings Progress (Remaining vs Goal)</span>
-                <span>{Math.round(savingsProgress)}%</span>
+                <span>Savings Target Fulfillment</span>
+                <span>{Math.round(savingsProgress)}% ({formatCurrency(netSurplus)} / {formatCurrency(savings_goal)})</span>
               </div>
               <div className={styles.progressBar}>
                 <div 
@@ -278,39 +309,92 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
               </div>
             </div>
           </div>
+
+          {/* Performance Metrics */}
+          <h2 className={styles.sectionTitle}>Key Performance Indicators</h2>
+          <div className={styles.perfGrid}>
+            <div className={styles.perfItem}>
+              <span>Overall Savings Rate</span>
+              <strong>{savingsRate}%</strong>
+            </div>
+            <div className={styles.perfItem}>
+              <span>Transaction Volume</span>
+              <strong>{expenses.length} payments</strong>
+            </div>
+            <div className={styles.perfItem}>
+              <span>Average Transaction</span>
+              <strong>{formatCurrency(averageExpense)}</strong>
+            </div>
+          </div>
+
+          {/* Executive Statement Narrative */}
+          <div className={styles.narrativeCard}>
+            <h3>Executive Statement</h3>
+            <p>
+              {spent === 0 ? (
+                `During the ${profile.month} financial cycle, zero expenditures were recorded against the ${formatCurrency(allowance)} monthly allowance. The full allowance of ${formatCurrency(allowance)} is preserved as liquid net surplus, completely fulfilling the baseline savings target of ${formatCurrency(savings_goal)} and maintaining a 100% savings rate.`
+              ) : (
+                `During the ${profile.month} financial cycle, total recorded expenditures amounted to ${formatCurrency(spent)} across ${expenses.length} transaction(s) against the ${formatCurrency(allowance)} monthly allowance. The workspace closed the cycle with ${formatCurrency(netSurplus)} in net surplus (${savingsRate}% savings rate), with ${categoriesWithSpend.length} active spending categor${categoriesWithSpend.length === 1 ? 'y' : 'ies'}.`
+              )}
+            </p>
+          </div>
         </div>
-        {renderFooter(pageCounter++)}
+
+        {renderFooter(1)}
       </div>
 
-      {/* PAGE 2: CATEGORY BREAKDOWN & TOP SPEND */}
+      {/* ========================================================================= */}
+      {/* PAGE 2: CATEGORY ALLOCATIONS & VISUAL ANALYTICS */}
+      {/* ========================================================================= */}
       <div className={styles.pdfPage}>
-        {renderHeader("Category Breakdown")}
         <div>
-          <h2 className={styles.sectionTitle}>Category Breakdown</h2>
+          {renderHeader("Category Allocations & Analytics")}
+
+          {/* Category Breakdown Table */}
+          <h2 className={styles.sectionTitle}>
+            <span>Category Budget Allocations</span>
+            <span style={{ fontSize: '0.72rem', color: '#6c6258' }}>{categories.length} Configured Categories</span>
+          </h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Category</th>
-                  <th>Budget</th>
-                  <th>Spent</th>
-                  <th>Remaining</th>
-                  <th>Usage %</th>
+                  <th className={styles.textRight}>Budget Limit</th>
+                  <th className={styles.textRight}>Actual Spent</th>
+                  <th className={styles.textRight}>Variance / Remaining</th>
+                  <th className={styles.textRight}>Utilization</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedCategoryTotals.map(cat => {
                   const usage = cat.budget > 0 ? (cat.spent / cat.budget) * 100 : 0;
+                  const isOver = cat.spent > cat.budget && cat.budget > 0;
+                  const isHealthy = cat.spent <= cat.budget;
+                  const variance = cat.budget - cat.spent;
+
                   return (
                     <tr key={cat.id}>
                       <td className={styles.categoryCell}>
                         <span className={styles.categoryColor} style={{ backgroundColor: cat.color }} />
                         {cat.name}
                       </td>
-                      <td>{formatCurrency(cat.budget)}</td>
-                      <td>{formatCurrency(cat.spent)}</td>
-                      <td>{formatCurrency(cat.budget - cat.spent)}</td>
-                      <td>{Math.round(usage)}%</td>
+                      <td className={styles.textRight}>{formatCurrency(cat.budget)}</td>
+                      <td className={styles.textRight}><strong>{formatCurrency(cat.spent)}</strong></td>
+                      <td className={styles.textRight} style={{ color: variance < 0 ? '#ef4444' : '#111111' }}>
+                        {formatCurrency(variance)}
+                      </td>
+                      <td className={styles.textRight}>{Math.round(usage)}%</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {cat.spent === 0 ? (
+                          <span className={`${styles.badge} ${styles.badgeNeutral}`}>Unused</span>
+                        ) : isOver ? (
+                          <span className={`${styles.badge} ${styles.badgeDanger}`}>Over Budget</span>
+                        ) : (
+                          <span className={`${styles.badge} ${styles.badgeSuccess}`}>Normal</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -318,151 +402,105 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
             </table>
           </div>
 
-          <h2 className={styles.sectionTitle}>Top Spending Categories</h2>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Ranking</th>
-                  <th>Category</th>
-                  <th>Spent</th>
-                  <th>Percentage of Total Spend</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCategoryTotals.slice(0, 5).map((cat, index) => {
-                  const totalPct = spent > 0 ? (cat.spent / spent) * 100 : 0;
-                  return (
-                    <tr key={cat.id}>
-                      <td><strong>#{index + 1}</strong></td>
-                      <td className={styles.categoryCell}>
-                        <span className={styles.categoryColor} style={{ backgroundColor: cat.color }} />
-                        {cat.name}
-                      </td>
-                      <td><strong>{formatCurrency(cat.spent)}</strong></td>
-                      <td>{Math.round(totalPct)}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <h2 className={styles.sectionTitle}>Monthly Performance Indicators</h2>
-          <div className={styles.perfGrid}>
-            <div className={styles.perfItem}>
-              <span>Net Surplus / Savings</span>
-              <strong>{formatCurrency(totalSavings)}</strong>
-            </div>
-            <div className={styles.perfItem}>
-              <span>Average Expense</span>
-              <strong>{formatCurrency(averageExpense)}</strong>
-            </div>
-            <div className={styles.perfItem}>
-              <span>Highest Single Bill</span>
-              <strong>{formatCurrency(highestExpense)}</strong>
-            </div>
-          </div>
-        </div>
-        {renderFooter(pageCounter++)}
-      </div>
-
-      {/* PAGE 3: ANALYTICS CHARTS */}
-      <div className={styles.pdfPage}>
-        {renderHeader("Analytics & Trends")}
-        <div>
+          {/* Visual Analytics */}
           <h2 className={styles.sectionTitle}>Visual Analytics</h2>
-          <div className={styles.chartsGrid}>
-            <div className={styles.chartCard}>
-              <h3>Category Spend Distribution</h3>
-              {pieData.length > 0 ? (
-                <PieChart width={320} height={180}>
-                  <Pie
-                    data={pieData}
-                    cx={160}
-                    cy={90}
-                    innerRadius={45}
-                    outerRadius={70}
-                    paddingAngle={3}
-                    dataKey="value"
-                    isAnimationActive={false}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val) => formatCurrency(Number(val))} />
-                </PieChart>
-              ) : (
-                <div style={{ height: 180, display: 'grid', placeItems: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>No spending data recorded.</div>
-              )}
-            </div>
 
-            <div className={styles.chartCard}>
-              <h3>Budget vs. Actual</h3>
-              {barData.length > 0 ? (
-                <BarChart width={320} height={180} data={barData.slice(0, 6)} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 9 }} />
-                  <YAxis tick={{ fontSize: 9 }} />
-                  <Tooltip formatter={(val) => formatCurrency(Number(val))} />
-                  <Bar dataKey="budget" fill="#cbd5e1" isAnimationActive={false} />
-                  <Bar dataKey="spent" fill="#4f46e5" isAnimationActive={false} />
-                </BarChart>
-              ) : (
-                <div style={{ height: 180, display: 'grid', placeItems: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>No category limits mapped.</div>
-              )}
-            </div>
+          {spent > 0 ? (
+            <div className={styles.chartsGrid}>
+              <div className={styles.chartCard}>
+                <h3>Category Spend Distribution</h3>
+                {pieData.length > 0 ? (
+                  <PieChart width={320} height={170}>
+                    <Pie
+                      data={pieData}
+                      cx={160}
+                      cy={85}
+                      innerRadius={40}
+                      outerRadius={68}
+                      paddingAngle={3}
+                      dataKey="value"
+                      isAnimationActive={false}
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.color || CHART_COLORS[index % CHART_COLORS.length]}
+                          stroke="#111111"
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => formatCurrency(Number(val))} />
+                  </PieChart>
+                ) : null}
+              </div>
 
-            <div className={`${styles.chartCard} ${styles.chartFullWidth}`}>
-              <h3>Monthly Spending Trend (Last 6 Months)</h3>
-              <LineChart width={660} height={180} data={monthlySpendingData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(val) => formatCurrency(Number(val))} />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Line type="monotone" dataKey="spent" stroke="#4f46e5" strokeWidth={2} name="Spent" isAnimationActive={false} />
-                <Line type="monotone" dataKey="saved" stroke="#10b981" strokeWidth={2} name="Saved Goal" isAnimationActive={false} />
-              </LineChart>
+              <div className={styles.chartCard}>
+                <h3>Budget vs. Actual Spend</h3>
+                {barData.length > 0 ? (
+                  <BarChart width={320} height={170} data={barData.slice(0, 6)} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                    <CartesianGrid vertical={false} stroke="#d8d0c3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 8.5 }} />
+                    <YAxis tick={{ fontSize: 8.5 }} />
+                    <Tooltip formatter={(val) => formatCurrency(Number(val))} />
+                    <Bar dataKey="budget" fill="#d46a4c" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="spent" fill="#111111" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  </BarChart>
+                ) : null}
+              </div>
             </div>
+          ) : (
+            <div className={styles.capitalPreservationCard}>
+              <div className={styles.capitalPreservationIcon}>
+                <ShieldCheck size={22} />
+              </div>
+              <div className={styles.capitalPreservationContent}>
+                <h4>100% Capital Preservation Recorded</h4>
+                <p>
+                  No category limits were breached during this cycle. All {categories.length} budget lines retained full capacity, preserving the entire monthly allowance of {formatCurrency(allowance)} as surplus.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Historical Trend Chart */}
+          <div className={styles.chartCard} style={{ marginTop: '0.6rem' }}>
+            <h3>Monthly Multi-Cycle Trend (Last 6 Months)</h3>
+            <LineChart width={670} height={165} data={monthlySpendingData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid vertical={false} stroke="#d8d0c3" />
+              <XAxis dataKey="month" tick={{ fontSize: 9.5 }} />
+              <YAxis tick={{ fontSize: 9.5 }} />
+              <Tooltip formatter={(val) => formatCurrency(Number(val))} />
+              <Legend wrapperStyle={{ fontSize: 9.5 }} />
+              <Line type="monotone" dataKey="spent" stroke="#111111" strokeWidth={2.5} name="Total Spent" isAnimationActive={false} />
+              <Line type="monotone" dataKey="saved" stroke="#d46a4c" strokeWidth={2.5} name="Savings Target" isAnimationActive={false} />
+            </LineChart>
           </div>
         </div>
-        {renderFooter(pageCounter++)}
+
+        {renderFooter(2)}
       </div>
 
-      {/* PAGE 4+: EXPENSE HISTORY PAGES */}
-      {expenseChunks.length === 0 ? (
+      {/* ========================================================================= */}
+      {/* PAGE 3+ : TRANSACTIONS, RECURRING COMMITMENTS & ADVISORY INSIGHTS */}
+      {/* ========================================================================= */}
+      {sortedExpenses.length <= 10 ? (
+        /* Standard 3-Page Flow: Transactions + Recurring + Insights on Page 3 */
         <div className={styles.pdfPage}>
-          {renderHeader("Expense History")}
           <div>
-            <h2 className={styles.sectionTitle}>Expense History</h2>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No expenses recorded this cycle.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          {renderFooter(pageCounter++)}
-        </div>
-      ) : (
-        expenseChunks.map((chunk, chunkIdx) => (
-          <div className={styles.pdfPage} key={`exp-page-${chunkIdx}`}>
-            {renderHeader(`Expense Ledger (Page ${chunkIdx + 1})`)}
-            <div>
-              <h2 className={styles.sectionTitle}>Expense History</h2>
+            {renderHeader("Ledger, Commitments & Advisory")}
+
+            {/* Expense History Section */}
+            <h2 className={styles.sectionTitle}>
+              <span>Expense Transaction Ledger</span>
+              <span style={{ fontSize: '0.72rem', color: '#6c6258' }}>{expenses.length} Records</span>
+            </h2>
+            {expenses.length === 0 ? (
+              <div className={styles.emptyCallout}>
+                <CheckCircle2 size={16} color="#22c55e" />
+                <span>Zero transaction entries recorded during this billing cycle.</span>
+              </div>
+            ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -471,11 +509,11 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
                       <th>Category</th>
                       <th>Description</th>
                       <th>Method</th>
-                      <th>Amount</th>
+                      <th className={styles.textRight}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {chunk.map(exp => {
+                    {sortedExpenses.map(exp => {
                       const cat = categoryMap.get(exp.category_id);
                       return (
                         <tr key={exp.id}>
@@ -486,100 +524,237 @@ function BudgetReport({ budgetState, appState, overview, reportRef }) {
                           </td>
                           <td>{exp.description}</td>
                           <td>{exp.payment_method || 'UPI'}</td>
-                          <td><strong>{formatCurrency(exp.amount)}</strong></td>
+                          <td className={styles.textRight}><strong>{formatCurrency(exp.amount)}</strong></td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            </div>
-            {renderFooter(pageCounter++)}
-          </div>
-        ))
-      )}
+            )}
 
-      {/* RECURRING EXPENSES PAGE (IF PRESENT) */}
-      <div className={styles.pdfPage}>
-        {renderHeader("Commitments & Bills")}
-        <div>
-          <h2 className={styles.sectionTitle}>Recurring Expenses</h2>
-          <div className={styles.tableWrap}>
+            {/* Recurring Commitments Section */}
+            <h2 className={styles.sectionTitle}>
+              <span>Recurring Commitments & Subscriptions</span>
+              <span style={{ fontSize: '0.72rem', color: '#6c6258' }}>{recurringExpenses.length} Active</span>
+            </h2>
             {recurringExpenses.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', fontSize: '0.85rem', color: '#6b7280' }}>
-                No active recurring templates/commitments scheduled.
+              <div className={styles.emptyCallout}>
+                <Layers size={16} color="#6c6258" />
+                <span>No active scheduled recurring commitments or recurring bills registered.</span>
               </div>
             ) : (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th>Amount</th>
-                    <th>Frequency</th>
-                    <th>Next Due Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recurringExpenses.map(recur => {
-                    const cat = categoryMap.get(recur.category_id);
-                    return (
-                      <tr key={recur.id}>
-                        <td><strong>{recur.description}</strong></td>
-                        <td className={styles.categoryCell}>
-                          <span className={styles.categoryColor} style={{ backgroundColor: cat?.color }} />
-                          {cat?.name || 'Other'}
-                        </td>
-                        <td><strong>{formatCurrency(recur.amount)}</strong></td>
-                        <td>{recur.frequency}</td>
-                        <td>{formatDisplayDate(recur.next_due_date)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-        {renderFooter(pageCounter++)}
-      </div>
-
-      {/* LAST PAGE: INSIGHTS & RECOMMENDATIONS */}
-      <div className={styles.pdfPage}>
-        {renderHeader("Advisory & Insights")}
-        <div>
-          <h2 className={styles.sectionTitle}>Smart Insights</h2>
-          <div className={styles.insightsList}>
-            {insights.map((insight, idx) => {
-              const isWarning = insight.tone === 'warning' || insight.tone === 'danger';
-              const isSuccess = insight.tone === 'success';
-              return (
-                <div 
-                  key={`insight-${idx}`} 
-                  className={`${styles.insightCard} ${isWarning ? styles.insightCardWarning : isSuccess ? styles.insightCardSuccess : ''}`}
-                >
-                  {isWarning ? <AlertCircle size={16} /> : isSuccess ? <CheckCircle2 size={16} /> : <TrendingUp size={16} />}
-                  <span>{insight.text}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          <h2 className={styles.sectionTitle}>Financial Recommendations</h2>
-          <div className={styles.recsList}>
-            {recommendations.map((rec, idx) => (
-              <div 
-                key={`rec-${idx}`} 
-                className={`${styles.recCard} ${rec.primary ? styles.recCardPrimary : ''}`}
-              >
-                <Award size={16} />
-                <span>{rec.text}</span>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Description</th>
+                      <th>Category</th>
+                      <th>Frequency</th>
+                      <th>Next Due Date</th>
+                      <th className={styles.textRight}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recurringExpenses.map(recur => {
+                      const cat = categoryMap.get(recur.category_id);
+                      return (
+                        <tr key={recur.id}>
+                          <td><strong>{recur.description}</strong></td>
+                          <td className={styles.categoryCell}>
+                            <span className={styles.categoryColor} style={{ backgroundColor: cat?.color }} />
+                            {cat?.name || 'Other'}
+                          </td>
+                          <td>{recur.frequency}</td>
+                          <td>{formatDisplayDate(recur.next_due_date)}</td>
+                          <td className={styles.textRight}><strong>{formatCurrency(recur.amount)}</strong></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            ))}
+            )}
+
+            {/* Smart Insights */}
+            <h2 className={styles.sectionTitle}>Strategic Financial Insights</h2>
+            <div className={styles.insightsList}>
+              {insights.map((insight, idx) => {
+                const isWarning = insight.tone === 'warning';
+                const isDanger = insight.tone === 'danger';
+                const isSuccess = insight.tone === 'success';
+                return (
+                  <div 
+                    key={`insight-${idx}`} 
+                    className={`${styles.insightCard} ${isDanger ? styles.insightCardDanger : isWarning ? styles.insightCardWarning : isSuccess ? styles.insightCardSuccess : ''}`}
+                  >
+                    {isDanger || isWarning ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                    <span>{insight.text}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Financial Recommendations */}
+            <h2 className={styles.sectionTitle}>Actionable Advisory Recommendations</h2>
+            <div className={styles.recsList}>
+              {recommendations.map((rec, idx) => (
+                <div 
+                  key={`rec-${idx}`} 
+                  className={`${styles.recCard} ${rec.primary ? styles.recCardPrimary : ''}`}
+                >
+                  <Award size={15} />
+                  <span>{rec.text}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Compliance / Statement Stamp */}
+            <div className={styles.complianceStamp}>
+              <span>Certified BudgetOS Financial Engine Record</span>
+              <span>Generated for {accountHolderEmail}</span>
+            </div>
           </div>
+
+          {renderFooter(3)}
         </div>
-        {renderFooter(pageCounter++)}
-      </div>
+      ) : (
+        /* Multi-Page Flow when large transaction ledger exists */
+        <>
+          {expenseChunks.map((chunk, chunkIdx) => (
+            <div className={styles.pdfPage} key={`exp-chunk-${chunkIdx}`}>
+              <div>
+                {renderHeader(`Expense Ledger (Part ${chunkIdx + 1})`)}
+                <h2 className={styles.sectionTitle}>
+                  <span>Expense Transaction Ledger (Page {chunkIdx + 1} of {expenseChunks.length})</span>
+                  <span style={{ fontSize: '0.72rem', color: '#6c6258' }}>Showing {chunk.length} items</span>
+                </h2>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Method</th>
+                        <th className={styles.textRight}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chunk.map(exp => {
+                        const cat = categoryMap.get(exp.category_id);
+                        return (
+                          <tr key={exp.id}>
+                            <td>{formatDisplayDate(exp.expense_date)}</td>
+                            <td className={styles.categoryCell}>
+                              <span className={styles.categoryColor} style={{ backgroundColor: cat?.color }} />
+                              {cat?.name || 'Other'}
+                            </td>
+                            <td>{exp.description}</td>
+                            <td>{exp.payment_method || 'UPI'}</td>
+                            <td className={styles.textRight}><strong>{formatCurrency(exp.amount)}</strong></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {renderFooter(3 + chunkIdx)}
+            </div>
+          ))}
+
+          {/* Final Summary & Advisory Page */}
+          <div className={styles.pdfPage}>
+            <div>
+              {renderHeader("Commitments & Strategic Advisory")}
+
+              {/* Recurring Commitments Section */}
+              <h2 className={styles.sectionTitle}>
+                <span>Recurring Commitments & Subscriptions</span>
+                <span style={{ fontSize: '0.72rem', color: '#6c6258' }}>{recurringExpenses.length} Active</span>
+              </h2>
+              {recurringExpenses.length === 0 ? (
+                <div className={styles.emptyCallout}>
+                  <Layers size={16} color="#6c6258" />
+                  <span>No active scheduled recurring commitments or recurring bills registered.</span>
+                </div>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>Frequency</th>
+                        <th>Next Due Date</th>
+                        <th className={styles.textRight}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recurringExpenses.map(recur => {
+                        const cat = categoryMap.get(recur.category_id);
+                        return (
+                          <tr key={recur.id}>
+                            <td><strong>{recur.description}</strong></td>
+                            <td className={styles.categoryCell}>
+                              <span className={styles.categoryColor} style={{ backgroundColor: cat?.color }} />
+                              {cat?.name || 'Other'}
+                            </td>
+                            <td>{recur.frequency}</td>
+                            <td>{formatDisplayDate(recur.next_due_date)}</td>
+                            <td className={styles.textRight}><strong>{formatCurrency(recur.amount)}</strong></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Strategic Insights */}
+              <h2 className={styles.sectionTitle}>Strategic Financial Insights</h2>
+              <div className={styles.insightsList}>
+                {insights.map((insight, idx) => {
+                  const isWarning = insight.tone === 'warning';
+                  const isDanger = insight.tone === 'danger';
+                  const isSuccess = insight.tone === 'success';
+                  return (
+                    <div 
+                      key={`insight-${idx}`} 
+                      className={`${styles.insightCard} ${isDanger ? styles.insightCardDanger : isWarning ? styles.insightCardWarning : isSuccess ? styles.insightCardSuccess : ''}`}
+                    >
+                      {isDanger || isWarning ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                      <span>{insight.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Recommendations */}
+              <h2 className={styles.sectionTitle}>Actionable Advisory Recommendations</h2>
+              <div className={styles.recsList}>
+                {recommendations.map((rec, idx) => (
+                  <div 
+                    key={`rec-${idx}`} 
+                    className={`${styles.recCard} ${rec.primary ? styles.recCardPrimary : ''}`}
+                  >
+                    <Award size={15} />
+                    <span>{rec.text}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Compliance Stamp */}
+              <div className={styles.complianceStamp}>
+                <span>Certified BudgetOS Financial Engine Record</span>
+                <span>Generated for {accountHolderEmail}</span>
+              </div>
+            </div>
+            {renderFooter(totalPages)}
+          </div>
+        </>
+      )}
     </div>
   );
 }

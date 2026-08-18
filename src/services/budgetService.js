@@ -21,7 +21,40 @@ function addInterval(dateStr, frequency) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function loadBudgetWorkspace(userId, user, preferredMonthId) {
+async function createDefaultCategoriesJS(userId, monthlyBudgetId) {
+  const defaultCategories = [
+    { name: 'Food', icon: 'utensils', color: '#F97316' },
+    { name: 'College', icon: 'graduation-cap', color: '#3B82F6' },
+    { name: 'Transport', icon: 'car', color: '#22C55E' },
+    { name: 'Shopping', icon: 'shopping-bag', color: '#EC4899' },
+    { name: 'Subscriptions', icon: 'repeat', color: '#8B5CF6' },
+    { name: 'Entertainment', icon: 'film', color: '#EAB308' },
+    { name: 'Health', icon: 'heart-pulse', color: '#EF4444' },
+    { name: 'Bills', icon: 'file-text', color: '#06B6D4' },
+    { name: 'Travel', icon: 'plane', color: '#14B8A6' },
+    { name: 'Misc', icon: 'box', color: '#64748B' }
+  ];
+
+  const categoriesToInsert = defaultCategories.map(cat => ({
+    user_id: userId,
+    monthly_budget_id: monthlyBudgetId,
+    name: cat.name,
+    icon: cat.icon,
+    color: cat.color,
+    budget: 0,
+    spent: 0,
+    remaining: 0
+  }));
+
+  const { error } = await supabase
+    .from('monthly_budget_categories')
+    .insert(categoriesToInsert);
+
+  if (error) throw error;
+}
+
+export async function ensureCurrentMonthExists(userId) {
+  // 1. Fetch budgets to check what we have
   let { data: budgets, error: budgetsError } = await supabase
     .from('monthly_budgets')
     .select('*')
@@ -31,22 +64,165 @@ export async function loadBudgetWorkspace(userId, user, preferredMonthId) {
 
   if (budgetsError) throw budgetsError;
 
-  if (!budgets || budgets.length === 0) {
-    const { data: newMonthId, error: rpcError } = await supabase
-      .rpc('create_new_month', { p_user_id: userId });
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonthNum = today.getMonth() + 1;
 
-    if (rpcError) throw rpcError;
-
-    const { data: refetched, error: refetchError } = await supabase
-      .from('monthly_budgets')
-      .select('*')
-      .eq('user_id', userId)
-      .order('year', { ascending: false })
-      .order('month', { ascending: false });
-
-    if (refetchError) throw refetchError;
-    budgets = refetched;
+  const currentMonth = budgets && budgets.find(b => b.year === currentYear && b.month === currentMonthNum);
+  if (currentMonth) {
+    return {
+      created: false,
+      monthId: currentMonth.id,
+      monthName: formatMonthName(currentMonthNum, currentYear),
+      savingsGoal: Number(currentMonth.savings_goal),
+      allowance: Number(currentMonth.allowance),
+    };
   }
+
+  // 2. Fetch default settings
+  let { data: settingsList, error: settingsError } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (settingsError) throw settingsError;
+
+  let settings = settingsList?.[0] || null;
+  if (!settings) {
+    const { data: newSettings, error: insertSettingsError } = await supabase
+      .from('settings')
+      .insert({
+        user_id: userId,
+        currency: 'INR',
+        theme: 'light',
+        notifications: true,
+        first_day_of_month: 1,
+        default_allowance: 2500,
+        default_savings_goal: 500,
+      })
+      .select()
+      .single();
+    if (insertSettingsError) throw insertSettingsError;
+    settings = newSettings;
+  }
+
+  const defaultAllowance = Number(settings.default_allowance || 2500);
+  const defaultSavingsGoal = Number(settings.default_savings_goal || 500);
+
+  if (!budgets || budgets.length === 0) {
+    // Brand new user: create the current month with default values
+    const { data: newBudget, error: insertError } = await supabase
+      .from('monthly_budgets')
+      .insert({
+        user_id: userId,
+        month: currentMonthNum,
+        year: currentYear,
+        allowance: defaultAllowance,
+        savings_goal: defaultSavingsGoal,
+        current_balance: defaultAllowance,
+        remaining_budget: defaultAllowance,
+        total_spent: 0,
+        archived: false,
+      })
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+
+    await createDefaultCategoriesJS(userId, newBudget.id);
+    return {
+      created: true,
+      monthId: newBudget.id,
+      monthName: formatMonthName(currentMonthNum, currentYear),
+      carriedSavings: 0,
+      savingsGoal: defaultSavingsGoal,
+      allowance: defaultAllowance,
+    };
+  }
+
+  // Find the most recent budget prior to the target month
+  const priorBudgets = budgets.filter(b => b.year < currentYear || (b.year === currentYear && b.month < currentMonthNum));
+  let latestBudget = priorBudgets[0] || budgets[0];
+  let currentStepYear = latestBudget.year;
+  let currentStepMonth = latestBudget.month;
+  let lastBudgetId = latestBudget.id;
+  let lastBudgetAllowance = Number(latestBudget.allowance);
+  let lastBudgetTotalSpent = Number(latestBudget.total_spent || 0);
+
+  let lastCreatedId = null;
+  let lastCarriedSavings = 0;
+  let lastSavingsGoal = defaultSavingsGoal;
+
+  while (true) {
+    currentStepMonth++;
+    if (currentStepMonth > 12) {
+      currentStepMonth = 1;
+      currentStepYear++;
+    }
+
+    if (currentStepYear > currentYear || (currentStepYear === currentYear && currentStepMonth > currentMonthNum)) {
+      break;
+    }
+
+    const carriedSavings = Math.max(0, lastBudgetAllowance - lastBudgetTotalSpent);
+    lastCarriedSavings = carriedSavings;
+
+    // Archive previous month
+    await supabase
+      .from('monthly_budgets')
+      .update({ archived: true })
+      .eq('user_id', userId)
+      .eq('id', lastBudgetId);
+
+    // Insert new month budget with fresh default allowance and target savings goal
+    lastSavingsGoal = defaultSavingsGoal;
+
+    const { data: newBudget, error: insertError } = await supabase
+      .from('monthly_budgets')
+      .insert({
+        user_id: userId,
+        month: currentStepMonth,
+        year: currentStepYear,
+        allowance: defaultAllowance,
+        savings_goal: defaultSavingsGoal,
+        current_balance: defaultAllowance,
+        remaining_budget: defaultAllowance,
+        total_spent: 0,
+        archived: false,
+      })
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+
+    await createDefaultCategoriesJS(userId, newBudget.id);
+
+    lastBudgetId = newBudget.id;
+    lastCreatedId = newBudget.id;
+    lastBudgetAllowance = defaultAllowance;
+    lastBudgetTotalSpent = 0;
+  }
+
+  return {
+    created: true,
+    monthId: lastCreatedId || lastBudgetId,
+    monthName: formatMonthName(currentMonthNum, currentYear),
+    carriedSavings: lastCarriedSavings,
+    savingsGoal: lastSavingsGoal,
+    allowance: defaultAllowance,
+  };
+}
+
+export async function loadBudgetWorkspace(userId, user, preferredMonthId) {
+  // Ensure the current month exists (creating and rolling over savings if needed)
+  await ensureCurrentMonthExists(userId);
+
+  let { data: budgets, error: budgetsError } = await supabase
+    .from('monthly_budgets')
+    .select('*')
+    .eq('user_id', userId)
+    .order('year', { ascending: false })
+    .order('month', { ascending: false });
+
+  if (budgetsError) throw budgetsError;
 
   let activeMonth = budgets[0];
   if (preferredMonthId) {
@@ -351,19 +527,21 @@ export async function deleteExpense(expenseId) {
 }
 
 export async function createNewMonth(userId) {
-  const { data, error } = await supabase
-    .rpc('create_new_month', { p_user_id: userId });
-
-  if (error) throw error;
-  return { id: data };
+  const result = await ensureCurrentMonthExists(userId);
+  return result;
 }
 
-export async function deleteMonth(monthId) {
-  const { error } = await supabase
+export async function deleteMonth(monthId, userId) {
+  let query = supabase
     .from('monthly_budgets')
     .delete()
     .eq('id', monthId);
 
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -413,13 +591,18 @@ export async function resetAllUserData(userId) {
 
   if (settingsError) throw settingsError;
 
-  const { error: createError } = await supabase
-    .rpc('create_new_month', { p_user_id: userId });
-
-  if (createError) throw createError;
+  await ensureCurrentMonthExists(userId);
 }
 
 export async function importWorkspace(userId, exportedData) {
+  if (!exportedData || typeof exportedData !== 'object' || !exportedData.profile) {
+    throw new Error('Invalid BudgetOS file: Missing profile or monthly budget data.');
+  }
+
+  if (exportedData.profile.allowance === undefined && exportedData.profile.savings_goal === undefined) {
+    throw new Error('Invalid BudgetOS file: Corrupted profile structure.');
+  }
+
   const { error: clearBudgetsError } = await supabase
     .from('monthly_budgets')
     .delete()

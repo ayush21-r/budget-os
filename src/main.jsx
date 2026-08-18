@@ -1,5 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import App from './App.jsx';
 import AuthGate from './components/auth/AuthGate.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
@@ -12,5 +14,7 @@ createRoot(document.getElementById('root')).render(
         <App />
       </AuthGate>
     </AuthProvider>
+    <Analytics />
+    <SpeedInsights />
   </React.StrictMode>
 );
